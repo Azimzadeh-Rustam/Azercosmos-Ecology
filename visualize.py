@@ -9,10 +9,12 @@ import scienceplots
 
 CHANNELS = ['Red', 'Green', 'Blue', 'Near-Infrared', 'Panchromatic']
 NUM_CHANNELS = len(CHANNELS)
+BAND_MIN_VALUE = 0
 BAND_MAX_VALUE = 4095
 FIGURE_NUM_COLUMNS = 3
 FIGURE_NUM_ROWS = 2
 FONT_SIZE = 10
+COMPRESSION_FACTOR = 10
 
 plt.style.use(['science', 'notebook', 'grid'])
 matplotlib.rcParams.update({'font.size': FONT_SIZE})
@@ -35,60 +37,22 @@ def read_tif(path):
         return raster.read()
 
 
-def compress_image(image, factor):
-    height_compressed = image.shape[0] // factor
-    width_compressed = image.shape[1] // factor
-
-    image_compressed = resize(image, (height_compressed, width_compressed), mode='reflect', anti_aliasing=False)
-    #image_compressed -= image_compressed.min()
-    image_compressed /= image_compressed.max()
-    return image_compressed
-
-
 def visualize_channels(image):
-    figure, axes = plt.subplots(2, 3, figsize=(14, 8))
+    CMAPS = ['Reds', 'Greens', 'Blues', 'gray', 'gray']
 
-    red_compressed = compress_image(image[0], 10)
-    green_compressed = compress_image(image[1], 10)
-    blue_compressed = compress_image(image[2], 10)
-    nir_compressed = compress_image(image[3], 10)
-    panchromatic_compressed = compress_image(image[4], 10)
-    rgb_compressed = np.dstack((red_compressed, green_compressed, blue_compressed))
+    figure, axes = plt.subplots(FIGURE_NUM_ROWS, FIGURE_NUM_COLUMNS, figsize=(14, 8))
 
-    axis1 = axes[0][0]
-    red_canvas = axis1.imshow(red_compressed, cmap='Reds')
-    axis1.set_title('Red chanel')
-    axis1.axis('off')
-    figure.colorbar(red_canvas, ax=axis1)
-
-    axis2 = axes[0][1]
-    green_canvas = axis2.imshow(green_compressed, cmap='Greens')
-    axis2.set_title('Green chanel')
-    axis2.axis('off')
-    figure.colorbar(green_canvas, ax=axis2)
-
-    axis3 = axes[0][2]
-    blue_canvas = axis3.imshow(blue_compressed, cmap='Blues')
-    axis3.set_title('Blue chanel')
-    axis3.axis('off')
-    figure.colorbar(blue_canvas, ax=axis3)
-
-    axis4 = axes[1][0]
-    nir_canvas = axis4.imshow(nir_compressed, cmap='magma')
-    axis4.set_title('Near-Infrared chanel')
-    axis4.axis('off')
-    figure.colorbar(nir_canvas, ax=axis4)
-
-    axis5 = axes[1][1]
-    panchromatic_canvas = axis5.imshow(panchromatic_compressed, cmap='grey')
-    axis5.set_title('Panchromatic chanel')
-    axis5.axis('off')
-    figure.colorbar(panchromatic_canvas, ax=axis5)
-
-    axis6 = axes[1][2]
-    axis6.imshow(rgb_compressed)
-    axis6.set_title('Visible light')
-    axis6.axis('off')
+    for num_channel, axis in enumerate(axes.flatten()):
+        axis.axis('off')
+        if num_channel < NUM_CHANNELS:
+            channel = image[num_channel]
+            color_map = axis.imshow(channel, cmap=CMAPS[num_channel])
+            axis.set_title(f'{CHANNELS[num_channel]} channel')
+            figure.colorbar(color_map, ax=axis)
+        else:
+            rgb = np.dstack([image[num_channel] for num_channel in range(3)])
+            axis.imshow(rgb)
+            axis.set_title('Visible light')
 
     plt.tight_layout()
     plt.show()
@@ -99,7 +63,7 @@ def channel_histograms(image):
     colors = ['red', 'green', 'blue', 'purple', 'gray']
     num_channel = 0
 
-    figure, axes = plt.subplots(2, 3, figsize=(14, 8))
+    figure, axes = plt.subplots(FIGURE_NUM_ROWS, FIGURE_NUM_COLUMNS, figsize=(14, 8))
 
     for row in range(FIGURE_NUM_ROWS):
         for column in range(FIGURE_NUM_COLUMNS):
