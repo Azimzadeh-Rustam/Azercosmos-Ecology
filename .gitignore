@@ -2,3 +2,6 @@ src
 .venv
 .idea
 test.py
+*.tif
+*.psd
+*.png

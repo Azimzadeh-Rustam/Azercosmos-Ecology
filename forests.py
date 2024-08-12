@@ -2,24 +2,36 @@ import rasterio
 import numpy as np
 import matplotlib
 from matplotlib import pyplot as plt
+from matplotlib import gridspec as gridspec
 from matplotlib.ticker import ScalarFormatter
 import scienceplots
-
-FONT_SIZE = 10
-
-plt.style.use(['science', 'notebook', 'grid'])
-matplotlib.rcParams.update({'font.size': FONT_SIZE})
-matplotlib.rcParams["axes.formatter.limits"] = (-1, 1)
-matplotlib.rcParams['axes.formatter.useoffset'] = True
-matplotlib.rcParams['axes.formatter.offset_threshold'] = 1
-my_formatter = ScalarFormatter(useMathText=True)
-my_formatter.set_scientific(True)
-my_formatter.set_powerlimits((-1, 1))
 
 
 def main():
     image = read_tif('src/img/2017.TIF')
+    image = min_max_normalization(image)
     NDVI_channel(image)
+
+
+FONT_SIZE = 14
+BAND_MIN_VALUE = 0
+BAND_MAX_VALUE = 4095
+NDVI_THRESHOLD_LOW = 0.3
+NDVI_THRESHOLD_HIGH = 1
+MY_FORMATTER = ScalarFormatter(useMathText=True)
+MY_FORMATTER.set_scientific(True)
+MY_FORMATTER.set_powerlimits((-1, 1))
+
+
+def set_plot_style():
+    plt.style.use(['science', 'notebook', 'grid'])
+    plt.rcParams.update({
+        'font.size': FONT_SIZE,
+        'pdf.fonttype': 42,
+        'axes.formatter.limits': (-1, 1),
+        'axes.formatter.useoffset': True,
+        'axes.formatter.offset_threshold': 1
+    })
 
 
 def read_tif(path):
@@ -27,23 +39,37 @@ def read_tif(path):
         return raster.read()
 
 
+def min_max_normalization(image):
+    num_channels = image.shape[0]
+    normalized_image = image.astype(np.float32)
+    for num_channel in range(num_channels):
+        channel = image[num_channel]
+        normalized_channel = (channel - BAND_MIN_VALUE) / (BAND_MAX_VALUE - BAND_MIN_VALUE)
+        normalized_image[num_channel] = normalized_channel
+
+    return normalized_image
+
+
 def NDVI_channel(image):
     red_channel = image[0]
     nir_channel = image[3]
     ndvi_channel = (nir_channel - red_channel) / (nir_channel + red_channel + 1e-10)
-    forest_mask = (ndvi_channel > 0.3) & (ndvi_channel < 1)
+    forest_mask = np.where((ndvi_channel > NDVI_THRESHOLD_LOW) & (ndvi_channel < NDVI_THRESHOLD_HIGH), True, False)
     ndvi_forest_map = np.where(forest_mask, ndvi_channel, np.nan)
 
-    figure, axes = plt.subplots(1, 2, figsize=(14, 5))
+    figure = plt.figure(figsize=(14, 7))
+    gs = gridspec.GridSpec(nrows=2, ncols=2)
+    gs.update(wspace=0.25, hspace=0.25)
 
-    ax1 = axes[0]
-    ax1.imshow(red_channel, cmap='Grays')
-    color_map = ax1.imshow(ndvi_forest_map, cmap='RdYlGn', vmin=-1, vmax=1)
-    plt.colorbar(color_map, ax=ax1)
-    ax1.set_title('NDVI color map for assessing forest health')
-    ax1.axis('off')
+    forests_color_map_ax = figure.add_subplot(gs[0:2, 0:1])
+    forests_color_map_ax.imshow(red_channel, cmap='Grays')
+    color_map = forests_color_map_ax.imshow(ndvi_forest_map, cmap='RdYlGn', vmin=-1, vmax=1)
+    plt.colorbar(color_map, ax=forests_color_map_ax, label=r'$NDVI = \frac{NIR - Red}{NIR + Red}$',
+                 orientation='horizontal')
+    forests_color_map_ax.set_title('NDVI color map for assessing forest health')
+    forests_color_map_ax.axis('off')
 
-    ax2 = axes[1]
+    histogram_ax = figure.add_subplot(gs[0:1, 1:2])
     ndvi_forest_pattern = ndvi_channel[forest_mask]
     ndvi_forest_data = ndvi_forest_pattern.ravel()
     ndvi_data_mean = np.mean(ndvi_forest_data)
@@ -51,19 +77,27 @@ def NDVI_channel(image):
     ndvi_data_standard = np.std(ndvi_forest_data)
     bins = np.histogram_bin_edges(ndvi_forest_data, bins='scott')
 
-    ax2.set_title('Forest health histogram')
-    ax2.set_ylabel('Frequency', fontsize=10)
-    ax2.set_xlabel(r'$NDVI = \frac{NIR - Red}{NIR + Red}$', fontsize=10)
-    ax2.xaxis.set_major_formatter(my_formatter)
-    ax2.yaxis.set_major_formatter(my_formatter)
-    ax2.xaxis.get_offset_text().set_size(FONT_SIZE)
-    ax2.yaxis.get_offset_text().set_size(FONT_SIZE)
-    ax2.tick_params(axis='both', labelsize=FONT_SIZE)
-    ax2.hist(ndvi_forest_data, label='Forest health (0.3 < NDVI < 1)', alpha=0.7, histtype='stepfilled', bins=bins, color='Green')
-    ax2.plot([], [], ' ', label=f'Median: {ndvi_data_median:.3f}')
-    ax2.plot([], [], ' ', label=f'Mean: {ndvi_data_mean:.3f}')
-    ax2.plot([], [], ' ', label=f'Std Dev: {ndvi_data_standard:.3f}')
-    ax2.legend(loc='best', fontsize=10, fancybox=False, edgecolor='black')
+    histogram_ax.set_title('Forest health histogram')
+    histogram_ax.set_ylabel('Frequency', fontsize=FONT_SIZE)
+    histogram_ax.xaxis.set_major_formatter(MY_FORMATTER)
+    histogram_ax.yaxis.set_major_formatter(MY_FORMATTER)
+    histogram_ax.xaxis.get_offset_text().set_size(FONT_SIZE)
+    histogram_ax.yaxis.get_offset_text().set_size(FONT_SIZE)
+    histogram_ax.tick_params(labeltop=False, labelright=False, labelbottom=False, labelleft=True,
+                             axis='both', labelsize=FONT_SIZE)
+    histogram_ax.hist(ndvi_forest_data, label=f'Forest health ({NDVI_THRESHOLD_LOW} < NDVI < {NDVI_THRESHOLD_HIGH})',
+                      alpha=0.7, histtype='stepfilled', bins=bins, color='Green')
+    histogram_ax.plot([], [], ' ', label=f'Median: {ndvi_data_median:.3f}')
+    histogram_ax.plot([], [], ' ', label=f'Mean: {ndvi_data_mean:.3f}')
+    histogram_ax.plot([], [], ' ', label=f'Std Dev: {ndvi_data_standard:.3f}')
+    histogram_ax.legend(loc='best', fontsize=FONT_SIZE, fancybox=False, edgecolor='black')
+
+    boxplot_ax = figure.add_subplot(gs[1:2, 1:2])
+    boxplot_ax.boxplot(ndvi_forest_data, vert=False)
+    boxplot_ax.tick_params(top=True, right=False, bottom=True, left=False,
+                           labeltop=False, labelright=False, labelbottom=True, labelleft=False,
+                           axis='both', labelsize=FONT_SIZE)
+    boxplot_ax.set_xlabel('NDVI', fontsize=FONT_SIZE)
 
     plt.tight_layout()
     plt.show()
@@ -71,4 +105,5 @@ def NDVI_channel(image):
 
 
 if __name__ == '__main__':
+    set_plot_style()
     main()

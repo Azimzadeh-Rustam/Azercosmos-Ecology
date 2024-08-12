@@ -7,6 +7,7 @@ from matplotlib.ticker import ScalarFormatter
 import scienceplots
 
 
+PATH = 'src/img/2017.TIF'
 CHANNELS = ['Red', 'Green', 'Blue', 'Near-Infrared', 'Panchromatic']
 NUM_CHANNELS = len(CHANNELS)
 BAND_MIN_VALUE = 0
@@ -27,7 +28,9 @@ my_formatter.set_powerlimits((-1, 1))
 
 
 def main():
-    image = read_tif('src/img/2017.TIF')
+    image = read_tif(PATH)
+    image = min_max_normalization(image)
+    #visualize_rgb(image)
     visualize_channels(image)
     channel_histograms(image)
 
@@ -35,6 +38,43 @@ def main():
 def read_tif(path):
     with rasterio.open(path) as raster:
         return raster.read()
+
+
+def min_max_normalization(image):
+    normalized_image = image.astype(np.float32)
+    num_channels = image.shape[0]
+    for num_channel in range(num_channels):
+        channel = image[num_channel]
+        normalized_channel = (channel - BAND_MIN_VALUE) / (BAND_MAX_VALUE - BAND_MIN_VALUE)
+        normalized_image[num_channel] = normalized_channel
+
+    return normalized_image
+
+
+def pansharpening(image):
+    panchromatic_channel = image[4]
+    panchromatic_channel_mean = panchromatic_channel.mean()
+    pansharpened_image = np.empty_like(image[0:3])
+    for num_channel in range(3):
+        pansharpened_image[num_channel] = (image[num_channel] * panchromatic_channel) / panchromatic_channel_mean
+    return pansharpened_image
+
+
+def enhance_exposure(image):
+    GAMMA = 0.8
+    image = np.power(image, GAMMA)
+    return image
+
+
+def visualize_rgb(image):
+    pansharpened_image = pansharpening(image)
+    pansharpened_image = enhance_exposure(pansharpened_image)
+    rgb_image = np.dstack([pansharpened_image[num_channel] for num_channel in range(3)])
+    plt.figure(figsize=(10, 10))
+    plt.imshow(rgb_image)
+    plt.tight_layout()
+    plt.show()
+    plt.close()
 
 
 def visualize_channels(image):
