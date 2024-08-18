@@ -9,31 +9,20 @@ from keras.models import Model
 from keras.layers import (Input, Conv2D, MaxPooling2D, UpSampling2D, Conv2DTranspose, concatenate, BatchNormalization,
                           Dropout, Lambda)
 from keras import backend as K
+import random
+from sklearn.model_selection import train_test_split
+import tensorflow as tf
 
-
-def main():
-    METRICS = ['accuracy', jaccard_coef]
-    model = multi_unet_model(num_classes=TOTAL_CLASSES, image_height=IMAGE_HEIGHT, image_width=IMAGE_WIDTH,
-                             num_channels=NUM_CHANNELS)
-
-    num_parts = 11//5
-
+tf.keras.backend.clear_session()
 
 FONT_SIZE = 14
 BAND_MIN_VALUE = 0
 BAND_MAX_VALUE = 4095
-NDVI_THRESHOLD_LOW = 0.3
-NDVI_THRESHOLD_HIGH = 1
+PATCH_SIZE = 256
+NUM_CHANNELS = 4
 MY_FORMATTER = ScalarFormatter(useMathText=True)
 MY_FORMATTER.set_scientific(True)
 MY_FORMATTER.set_powerlimits((-1, 1))
-TOTAL_CLASSES = 2
-IMAGE_HEIGHT = 256
-IMAGE_WIDTH = 256
-NUM_CHANNELS = 3
-image_parts = list()
-labled_mask_parts = list()
-forest_mask = []
 
 
 def set_plot_style():
@@ -52,17 +41,56 @@ def read_tif(path):
         return raster.read()
 
 
-def jaccard_coef(true, prediction):
-    true_flatten = K.flatten(true)
-    prediction_flatten = K.flatten(prediction)
-    intersection = K.sum(true_flatten * prediction_flatten)
-    coef_value = (intersection + 1.0) / (K.sum(true_flatten) + K.sum(prediction_flatten) - intersection + 1.0)
-    return coef_value
+def min_max_normalization(image):
+    return (image.astype(np.float32) - BAND_MIN_VALUE) / (BAND_MAX_VALUE - BAND_MIN_VALUE)
 
 
-def multi_unet_model(num_classes=2, image_height=256, image_width=256, num_channels=3):
+def mask_to_label(mask):
+    green_channel = mask[1]
+    blue_channel = mask[2]
 
-    inputs = Input((image_height, image_width, num_channels))
+    forest_mask = green_channel > 0
+    sea_mask = blue_channel > 0
+
+    return np.select([forest_mask, sea_mask], [1, 2], default=0)
+
+
+def split_into_patches(image):
+    patches = list()
+
+    image_height = 8960 #image.shape[1]
+    image_width = image.shape[2]
+
+    image_cropped = image[:, :image_height, :]
+
+    for i in range(0, image_height, PATCH_SIZE):
+        for j in range(0, image_width, PATCH_SIZE):
+            patches.append(image_cropped[:, i:i + PATCH_SIZE, j:j + PATCH_SIZE])
+    return patches
+
+
+def visualize_patches(image, mask):
+    image_rgb = np.dstack([image[num_channel] for num_channel in range(3)])
+    mask_rgb = np.dstack([mask[num_channel] for num_channel in range(3)])
+
+    figure, axes = plt.subplots(1, 2, figsize=(14, 7))
+
+    axis1 = axes[0]
+    axis1.imshow(image_rgb)
+    axis1.axis('off')
+
+    axis2 = axes[1]
+    axis2.imshow(mask_rgb)
+    axis2.axis('off')
+
+    plt.tight_layout()
+    plt.show()
+    plt.close()
+
+
+def multi_unet_model(num_classes):
+
+    inputs = Input((PATCH_SIZE, PATCH_SIZE, NUM_CHANNELS))
 
     source_input = inputs
 
@@ -117,6 +145,57 @@ def multi_unet_model(num_classes=2, image_height=256, image_width=256, num_chann
     outputs = Conv2D(num_classes, (1, 1), activation='softmax')(c9)
     model = Model(inputs=[inputs], outputs=[outputs])
     return model
+
+
+def check_overfitting(history):
+    figure, axes = plt.subplots(1, 2, figsize=(10, 3.5))
+
+    axis1 = axes[0]
+    axis1.set_ylabel('Loss Function', fontsize=14)
+    axis1.set_xlabel('Number of Epochs', fontsize=14)
+    axis1.tick_params(axis='both', labelsize=10)
+    axis1.plot(history.history['loss'], label='Train Data')
+    axis1.plot(history.history['val_loss'], label='Validation Data')
+    axis1.legend(loc='best', fontsize=10, fancybox=False, edgecolor='black')
+
+    axis2 = axes[1]
+    axis2.set_ylabel('AUC', fontsize=14)
+    axis2.set_xlabel('Number of Epochs', fontsize=14)
+    axis2.tick_params(axis='both', labelsize=10)
+    axis2.plot(history.history['auc'], label='Train Data')
+    axis2.plot(history.history['val_auc'], label='Validation Data')
+    axis2.legend(loc='best', fontsize=10, fancybox=False, edgecolor='black')
+
+    plt.show()
+    plt.close()
+
+
+def main():
+    image = read_tif('src/img/2017.TIF')
+    mask = read_tif('mask.tif')
+
+    image = min_max_normalization(image)
+    mask = min_max_normalization(mask)
+
+    image_patches = split_into_patches(image)
+    mask_patches = split_into_patches(mask)
+
+    label_patches = [mask_to_label(mask_patch) for mask_patch in mask_patches]
+
+    input_train, input_test, output_train, output_test = train_test_split(image_patches, label_patches,
+                                                                          test_size=0.3, random_state=42)
+
+    total_classes = len(np.unique(label_patches[0]))
+    neural_network = multi_unet_model(num_classes=total_classes)
+
+    neural_network.compile(optimizer="adam", loss='categorical_crossentropy', metrics=['accuracy'])
+
+    training_history = neural_network.fit(input_train, output_train, epochs=150, batch_size=16, verbose=1,
+                                          validation_data=(input_test, output_test), shuffle=False)
+
+    neural_network.save('forests_sea_segmentation.h5')
+
+    #check_overfitting(training_history)
 
 
 if __name__ == '__main__':

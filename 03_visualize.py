@@ -41,14 +41,7 @@ def read_tif(path):
 
 
 def min_max_normalization(image):
-    normalized_image = image.astype(np.float32)
-    num_channels = image.shape[0]
-    for num_channel in range(num_channels):
-        channel = image[num_channel]
-        normalized_channel = (channel - BAND_MIN_VALUE) / (BAND_MAX_VALUE - BAND_MIN_VALUE)
-        normalized_image[num_channel] = normalized_channel
-
-    return normalized_image
+    return (image.astype(np.float32) - BAND_MIN_VALUE) / (BAND_MAX_VALUE - BAND_MIN_VALUE)
 
 
 def pansharpening(image):

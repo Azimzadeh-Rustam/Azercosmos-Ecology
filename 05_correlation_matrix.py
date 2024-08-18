@@ -14,7 +14,7 @@ mask = np.triu(np.ones_like(correlation_matrix))
 
 plt.figure(figsize=(10, 8))
 sns.heatmap(correlation_matrix, annot=True, linewidths=0.5, mask=mask, fmt=".3f", cmap='coolwarm', vmin=-1, vmax=1,
-            cbar=True, square=True, annot_kws={'fontsize': FONT_SIZE})
+            cbar=True, square=True, cbar_kws={"shrink": .75}, annot_kws={'fontsize': FONT_SIZE})
 plt.title('Correlation Matrix', fontsize=FONT_SIZE)
 plt.xticks(rotation=45, fontsize=FONT_SIZE, ha='right')
 plt.yticks(fontsize=FONT_SIZE)
@@ -33,16 +33,9 @@ for forest_index in forest_criteria:
 
 plt.figure(figsize=(10, 8))
 sns.heatmap(correlation_matrix.astype(float), annot=True, linewidths=0.5, fmt=".3f", cmap='coolwarm', vmin=-1, vmax=1,
-            cbar=True, square=True, annot_kws={'fontsize': FONT_SIZE})
+            cbar=True, square=True, cbar_kws={"shrink": .75}, annot_kws={'fontsize': FONT_SIZE})
 plt.title('Correlation Matrix between Forest Health and Caspian Sea Quality')
 plt.ylabel('Forest Health Indices')
 plt.xlabel('Caspian Sea Quality Indices')
 plt.show()
 plt.close()
-
-
-
-dates = [
-    datetime(2017, 8, 31),
-    datetime(2018, 8, 31)
-]

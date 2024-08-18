@@ -53,11 +53,12 @@ def min_max_normalization(image):
 def NDVI_channel(image):
     red_channel = image[0]
     nir_channel = image[3]
+
     ndvi_channel = (nir_channel - red_channel) / (nir_channel + red_channel + 1e-10)
     forest_mask = np.where((ndvi_channel > NDVI_THRESHOLD_LOW) & (ndvi_channel < NDVI_THRESHOLD_HIGH), True, False)
     ndvi_forest_map = np.where(forest_mask, ndvi_channel, np.nan)
 
-    figure = plt.figure(figsize=(14, 7))
+    figure = plt.figure(figsize=(15, 8))
     gs = gridspec.GridSpec(nrows=2, ncols=2)
     gs.update(wspace=0.25, hspace=0.25)
 
