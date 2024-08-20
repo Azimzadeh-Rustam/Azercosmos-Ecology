@@ -10,8 +10,6 @@ import scienceplots
 PATH = 'src/img/2017.TIF'
 CHANNELS = ['Red', 'Green', 'Blue', 'Near-Infrared', 'Panchromatic']
 NUM_CHANNELS = len(CHANNELS)
-BAND_MIN_VALUE = 0
-BAND_MAX_VALUE = 4095
 FIGURE_NUM_COLUMNS = 3
 FIGURE_NUM_ROWS = 2
 FONT_SIZE = 10
@@ -27,30 +25,17 @@ my_formatter.set_scientific(True)
 my_formatter.set_powerlimits((-1, 1))
 
 
-def main():
-    image = read_tif(PATH)
-    image = min_max_normalization(image)
-    #visualize_rgb(image)
-    visualize_channels(image)
-    channel_histograms(image)
-
-
 def read_tif(path):
     with rasterio.open(path) as raster:
-        return raster.read()
+        data = raster.read()
+        return data.transpose((1, 2, 0))
 
 
 def min_max_normalization(image):
+    BAND_MIN_VALUE = 0.0
+    BAND_MAX_VALUE = 4095.0
+
     return (image.astype(np.float32) - BAND_MIN_VALUE) / (BAND_MAX_VALUE - BAND_MIN_VALUE)
-
-
-def pansharpening(image):
-    panchromatic_channel = image[4]
-    panchromatic_channel_mean = panchromatic_channel.mean()
-    pansharpened_image = np.empty_like(image[0:3])
-    for num_channel in range(3):
-        pansharpened_image[num_channel] = (image[num_channel] * panchromatic_channel) / panchromatic_channel_mean
-    return pansharpened_image
 
 
 def enhance_exposure(image):
@@ -60,11 +45,12 @@ def enhance_exposure(image):
 
 
 def visualize_rgb(image):
-    pansharpened_image = pansharpening(image)
-    pansharpened_image = enhance_exposure(pansharpened_image)
-    rgb_image = np.dstack([pansharpened_image[num_channel] for num_channel in range(3)])
+    true_color_composite = image[:, :, :3]
+    #image = enhance_exposure(image)
+
     plt.figure(figsize=(10, 10))
-    plt.imshow(rgb_image)
+    plt.imshow(true_color_composite, vmin=0, vmax=1)
+    plt.axis('off')
     plt.tight_layout()
     plt.show()
     plt.close()
@@ -78,13 +64,13 @@ def visualize_channels(image):
     for num_channel, axis in enumerate(axes.flatten()):
         axis.axis('off')
         if num_channel < NUM_CHANNELS:
-            channel = image[num_channel]
-            color_map = axis.imshow(channel, cmap=CMAPS[num_channel])
+            channel = image[:, :, num_channel]
+            color_map = axis.imshow(channel, vmin=0, vmax=1, cmap=CMAPS[num_channel])
             axis.set_title(f'{CHANNELS[num_channel]} channel')
             figure.colorbar(color_map, ax=axis)
         else:
-            rgb = np.dstack([image[num_channel] for num_channel in range(3)])
-            axis.imshow(rgb)
+            true_color_composite = image[:, :, :3]
+            axis.imshow(true_color_composite, vmin=0, vmax=1)
             axis.set_title('Visible light')
 
     plt.tight_layout()
@@ -101,7 +87,7 @@ def channel_histograms(image):
     for row in range(FIGURE_NUM_ROWS):
         for column in range(FIGURE_NUM_COLUMNS):
             if num_channel < NUM_CHANNELS:
-                channel = image[num_channel]
+                channel = image[:, :, num_channel]
                 channel_nonzero_values = channel[channel > 0]
                 channel_data = channel_nonzero_values.ravel()
                 channel_data_mean = channel_data.mean()
@@ -128,6 +114,14 @@ def channel_histograms(image):
     plt.tight_layout()
     plt.show()
     plt.close()
+
+
+def main():
+    image = read_tif(PATH)
+    image = min_max_normalization(image)
+    visualize_rgb(image)
+    visualize_channels(image)
+    channel_histograms(image)
 
 
 if __name__ == '__main__':

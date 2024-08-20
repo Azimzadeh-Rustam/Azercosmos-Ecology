@@ -13,11 +13,7 @@ import random
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 
-tf.keras.backend.clear_session()
-
 FONT_SIZE = 14
-BAND_MIN_VALUE = 0
-BAND_MAX_VALUE = 4095
 PATCH_SIZE = 256
 NUM_CHANNELS = 4
 MY_FORMATTER = ScalarFormatter(useMathText=True)
@@ -38,49 +34,67 @@ def set_plot_style():
 
 def read_tif(path):
     with rasterio.open(path) as raster:
-        return raster.read()
+        data = raster.read()
+        data = data.transpose((1, 2, 0))
+        return data.astype(np.float32)
 
 
 def min_max_normalization(image):
-    return (image.astype(np.float32) - BAND_MIN_VALUE) / (BAND_MAX_VALUE - BAND_MIN_VALUE)
+    BAND_MIN_VALUE = 0.0
+    BAND_MAX_VALUE = 4095.0
+
+    return (image - BAND_MIN_VALUE) / (BAND_MAX_VALUE - BAND_MIN_VALUE)
 
 
 def mask_to_label(mask):
-    green_channel = mask[1]
-    blue_channel = mask[2]
+    mask_height, mask_width = mask.shape[0], mask.shape[1]
+
+    green_channel = mask[:, :, 1]
+    blue_channel = mask[:, :, 2]
 
     forest_mask = green_channel > 0
     sea_mask = blue_channel > 0
 
-    return np.select([forest_mask, sea_mask], [1, 2], default=0)
+    label = np.zeros((mask_height, mask_width), dtype=np.int32)
+    label[forest_mask] = 1
+    label[sea_mask] = 2
+
+    return label
 
 
 def split_into_patches(image):
     patches = list()
 
-    image_height = 8960 #image.shape[1]
-    image_width = image.shape[2]
+    image_height, image_width, num_channels = image.shape
 
-    image_cropped = image[:, :image_height, :]
+    for start_y in range(0, image_height, PATCH_SIZE):
+        for start_x in range(0, image_width, PATCH_SIZE):
+            end_y = start_y + PATCH_SIZE
+            end_x = start_x + PATCH_SIZE
 
-    for i in range(0, image_height, PATCH_SIZE):
-        for j in range(0, image_width, PATCH_SIZE):
-            patches.append(image_cropped[:, i:i + PATCH_SIZE, j:j + PATCH_SIZE])
+            patch_height = min(PATCH_SIZE, image_height - start_y)
+            patch_width = min(PATCH_SIZE, image_width - start_x)
+
+            patch = np.zeros((PATCH_SIZE, PATCH_SIZE, num_channels), dtype=image.dtype)
+            patch[:patch_height, :patch_width, :] = image[start_y:end_y, start_x:end_x, :]
+
+            patches.append(patch)
+
     return patches
 
 
 def visualize_patches(image, mask):
-    image_rgb = np.dstack([image[num_channel] for num_channel in range(3)])
-    mask_rgb = np.dstack([mask[num_channel] for num_channel in range(3)])
+    image = image[:, :, :3]
+    mask = mask[:, :, :3]
 
-    figure, axes = plt.subplots(1, 2, figsize=(14, 7))
+    figure, axes = plt.subplots(nrows=1, ncols=2, figsize=(14, 7))
 
     axis1 = axes[0]
-    axis1.imshow(image_rgb)
+    axis1.imshow(image, vmin=0, vmax=1)
     axis1.axis('off')
 
     axis2 = axes[1]
-    axis2.imshow(mask_rgb)
+    axis2.imshow(mask, vmin=0, vmax=1)
     axis2.axis('off')
 
     plt.tight_layout()
@@ -174,16 +188,28 @@ def main():
     image = read_tif('src/img/2017.TIF')
     mask = read_tif('mask.tif')
 
+    image = image[:8960, :, :4]
+    mask = mask[:8960, :, :]
+
     image = min_max_normalization(image)
     mask = min_max_normalization(mask)
 
     image_patches = split_into_patches(image)
     mask_patches = split_into_patches(mask)
 
+    #for _ in range(20):
+    #    random_id = random.randint(0, len(image_patches) - 1)
+    #    visualize_patches(image_patches[random_id], mask_patches[random_id])
+
     label_patches = [mask_to_label(mask_patch) for mask_patch in mask_patches]
 
     input_train, input_test, output_train, output_test = train_test_split(image_patches, label_patches,
                                                                           test_size=0.3, random_state=42)
+
+    input_train = np.array(input_train)
+    input_test = np.array(input_test)
+    output_train = np.array(output_train)
+    output_test = np.array(output_test)
 
     total_classes = len(np.unique(label_patches[0]))
     neural_network = multi_unet_model(num_classes=total_classes)
@@ -199,5 +225,6 @@ def main():
 
 
 if __name__ == '__main__':
+    tf.keras.backend.clear_session()
     set_plot_style()
     main()

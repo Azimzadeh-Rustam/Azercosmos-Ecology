@@ -7,17 +7,7 @@ from matplotlib.ticker import ScalarFormatter
 import scienceplots
 
 
-def main():
-    image = read_tif('src/img/2017.TIF')
-    image = min_max_normalization(image)
-    NDVI_channel(image)
-
-
 FONT_SIZE = 14
-BAND_MIN_VALUE = 0
-BAND_MAX_VALUE = 4095
-NDVI_THRESHOLD_LOW = 0.3
-NDVI_THRESHOLD_HIGH = 1
 MY_FORMATTER = ScalarFormatter(useMathText=True)
 MY_FORMATTER.set_scientific(True)
 MY_FORMATTER.set_powerlimits((-1, 1))
@@ -36,31 +26,34 @@ def set_plot_style():
 
 def read_tif(path):
     with rasterio.open(path) as raster:
-        return raster.read()
+        data = raster.read()
+        return data.transpose((1, 2, 0))
 
 
 def min_max_normalization(image):
-    num_channels = image.shape[0]
-    normalized_image = image.astype(np.float32)
-    for num_channel in range(num_channels):
-        channel = image[num_channel]
-        normalized_channel = (channel - BAND_MIN_VALUE) / (BAND_MAX_VALUE - BAND_MIN_VALUE)
-        normalized_image[num_channel] = normalized_channel
+    BAND_MIN_VALUE = 0.0
+    BAND_MAX_VALUE = 4095.0
 
-    return normalized_image
+    return (image.astype(np.float32) - BAND_MIN_VALUE) / (BAND_MAX_VALUE - BAND_MIN_VALUE)
 
 
 def NDVI_channel(image):
-    red_channel = image[0]
-    nir_channel = image[3]
+    NDVI_THRESHOLD_LOW = 0.3
+    NDVI_THRESHOLD_HIGH = 1.0
 
+    red_channel = image[:, :, 0]
+    green_channel = image[:, :, 1]
+    blue_channel = image[:, :, 2]
+    nir_channel = image[:, :, 3]
+
+    ndwi_channel = (green_channel - nir_channel) / (green_channel + nir_channel + 1e-10)
     ndvi_channel = (nir_channel - red_channel) / (nir_channel + red_channel + 1e-10)
     forest_mask = np.where((ndvi_channel > NDVI_THRESHOLD_LOW) & (ndvi_channel < NDVI_THRESHOLD_HIGH), True, False)
     ndvi_forest_map = np.where(forest_mask, ndvi_channel, np.nan)
 
     figure = plt.figure(figsize=(15, 8))
     gs = gridspec.GridSpec(nrows=2, ncols=2)
-    gs.update(wspace=0.25, hspace=0.25)
+    gs.update(wspace=0.25, hspace=0.10)
 
     forests_color_map_ax = figure.add_subplot(gs[0:2, 0:1])
     forests_color_map_ax.imshow(red_channel, cmap='Grays')
@@ -78,7 +71,7 @@ def NDVI_channel(image):
     ndvi_data_standard = np.std(ndvi_forest_data)
     bins = np.histogram_bin_edges(ndvi_forest_data, bins='scott')
 
-    histogram_ax.set_title('Forest health histogram')
+    histogram_ax.set_title('Forest health histogram and boxplot')
     histogram_ax.set_ylabel('Frequency', fontsize=FONT_SIZE)
     histogram_ax.xaxis.set_major_formatter(MY_FORMATTER)
     histogram_ax.yaxis.set_major_formatter(MY_FORMATTER)
@@ -91,7 +84,7 @@ def NDVI_channel(image):
     histogram_ax.plot([], [], ' ', label=f'Median: {ndvi_data_median:.3f}')
     histogram_ax.plot([], [], ' ', label=f'Mean: {ndvi_data_mean:.3f}')
     histogram_ax.plot([], [], ' ', label=f'Std Dev: {ndvi_data_standard:.3f}')
-    histogram_ax.legend(loc='best', fontsize=FONT_SIZE, fancybox=False, edgecolor='black')
+    histogram_ax.legend(loc='upper left', fontsize=FONT_SIZE, fancybox=False, edgecolor='black')
 
     boxplot_ax = figure.add_subplot(gs[1:2, 1:2])
     boxplot_ax.boxplot(ndvi_forest_data, vert=False)
@@ -103,6 +96,12 @@ def NDVI_channel(image):
     plt.tight_layout()
     plt.show()
     plt.close()
+
+
+def main():
+    image = read_tif('src/img/2017.TIF')
+    image = min_max_normalization(image)
+    NDVI_channel(image)
 
 
 if __name__ == '__main__':
