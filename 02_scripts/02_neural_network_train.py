@@ -39,11 +39,8 @@ def read_tif(path):
         return data.astype(np.float32)
 
 
-def min_max_normalization(image):
-    BAND_MIN_VALUE = 0.0
-    BAND_MAX_VALUE = 4095.0
-
-    return (image - BAND_MIN_VALUE) / (BAND_MAX_VALUE - BAND_MIN_VALUE)
+def min_max_normalization(image, band_min_value, band_max_value):
+    return (image - band_min_value) / (band_max_value - band_min_value)
 
 
 def mask_to_label(mask):
@@ -185,31 +182,25 @@ def check_overfitting(history):
 
 
 def main():
-    image = read_tif('src/img/2017.TIF')
-    mask = read_tif('mask.tif')
+    image = read_tif('../01_src/img/2017.TIF')
+    mask = read_tif('../01_src/mask.tif')
 
     image = image[:8960, :, :4]
     mask = mask[:8960, :, :]
 
-    image = min_max_normalization(image)
-    mask = min_max_normalization(mask)
+    image = min_max_normalization(image, band_min_value=0.0, band_max_value=4095.0)
+    mask = min_max_normalization(mask, band_min_value=0.0, band_max_value=255.0)
 
     image_patches = split_into_patches(image)
     mask_patches = split_into_patches(mask)
-
-    #for _ in range(20):
-    #    random_id = random.randint(0, len(image_patches) - 1)
-    #    visualize_patches(image_patches[random_id], mask_patches[random_id])
-
     label_patches = [mask_to_label(mask_patch) for mask_patch in mask_patches]
+
+    image_patches = np.array(image_patches)
+    mask_patches = np.array(mask_patches)
+    label_patches = np.array(label_patches)
 
     input_train, input_test, output_train, output_test = train_test_split(image_patches, label_patches,
                                                                           test_size=0.3, random_state=42)
-
-    input_train = np.array(input_train)
-    input_test = np.array(input_test)
-    output_train = np.array(output_train)
-    output_test = np.array(output_test)
 
     total_classes = len(np.unique(label_patches[0]))
     neural_network = multi_unet_model(num_classes=total_classes)

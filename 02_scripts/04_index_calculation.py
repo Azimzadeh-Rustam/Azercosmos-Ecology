@@ -4,6 +4,8 @@ import matplotlib
 from matplotlib import pyplot as plt
 from matplotlib import gridspec as gridspec
 from matplotlib.ticker import ScalarFormatter
+import seaborn as sns
+from sklearn.ensemble import IsolationForest
 import scienceplots
 
 
@@ -37,6 +39,21 @@ def min_max_normalization(image):
     return (image.astype(np.float32) - BAND_MIN_VALUE) / (BAND_MAX_VALUE - BAND_MIN_VALUE)
 
 
+def split_anomalies(data):
+    if data.ndim == 1:
+        data = data.reshape(-1, 1)
+
+    # select parameters
+    isolation_forest = IsolationForest(n_estimators=50, contamination=0.1, random_state=42)
+    isolation_forest.fit(data)
+    predictions = isolation_forest.predict(data)
+
+    filtered_data = data[predictions == 1]
+    anomalies = data[predictions == -1]
+
+    return filtered_data, anomalies
+
+
 def NDVI_channel(image):
     NDVI_THRESHOLD_LOW = 0.3
     NDVI_THRESHOLD_HIGH = 1.0
@@ -46,7 +63,6 @@ def NDVI_channel(image):
     blue_channel = image[:, :, 2]
     nir_channel = image[:, :, 3]
 
-    ndwi_channel = (green_channel - nir_channel) / (green_channel + nir_channel + 1e-10)
     ndvi_channel = (nir_channel - red_channel) / (nir_channel + red_channel + 1e-10)
     forest_mask = np.where((ndvi_channel > NDVI_THRESHOLD_LOW) & (ndvi_channel < NDVI_THRESHOLD_HIGH), True, False)
     ndvi_forest_map = np.where(forest_mask, ndvi_channel, np.nan)
@@ -66,9 +82,11 @@ def NDVI_channel(image):
     histogram_ax = figure.add_subplot(gs[0:1, 1:2])
     ndvi_forest_pattern = ndvi_channel[forest_mask]
     ndvi_forest_data = ndvi_forest_pattern.ravel()
-    ndvi_data_mean = np.mean(ndvi_forest_data)
-    ndvi_data_median = np.median(ndvi_forest_data)
-    ndvi_data_standard = np.std(ndvi_forest_data)
+    ndvi_forest_filtered_data, ndvi_forest_anomalies = split_anomalies(ndvi_forest_data)
+    ndvi_data_mean = np.mean(ndvi_forest_filtered_data)
+    ndvi_data_median = np.median(ndvi_forest_filtered_data)
+    ndvi_data_standard = np.std(ndvi_forest_filtered_data)
+
     bins = np.histogram_bin_edges(ndvi_forest_data, bins='scott')
 
     histogram_ax.set_title('Forest health histogram and boxplot')
@@ -79,11 +97,13 @@ def NDVI_channel(image):
     histogram_ax.yaxis.get_offset_text().set_size(FONT_SIZE)
     histogram_ax.tick_params(labeltop=False, labelright=False, labelbottom=False, labelleft=True,
                              axis='both', labelsize=FONT_SIZE)
-    histogram_ax.hist(ndvi_forest_data, label=f'Forest health ({NDVI_THRESHOLD_LOW} < NDVI < {NDVI_THRESHOLD_HIGH})',
-                      alpha=0.7, histtype='stepfilled', bins=bins, color='Green')
+    histogram_ax.hist(ndvi_forest_filtered_data, label='Main Data', alpha=0.7, histtype='stepfilled', bins=bins,
+                      color='Green')
     histogram_ax.plot([], [], ' ', label=f'Median: {ndvi_data_median:.3f}')
     histogram_ax.plot([], [], ' ', label=f'Mean: {ndvi_data_mean:.3f}')
     histogram_ax.plot([], [], ' ', label=f'Std Dev: {ndvi_data_standard:.3f}')
+    histogram_ax.hist(ndvi_forest_anomalies, label='Anomalies (10%)', alpha=0.7, histtype='stepfilled', bins=bins,
+                      color='Red')
     histogram_ax.legend(loc='upper left', fontsize=FONT_SIZE, fancybox=False, edgecolor='black')
 
     boxplot_ax = figure.add_subplot(gs[1:2, 1:2])
@@ -93,13 +113,13 @@ def NDVI_channel(image):
                            axis='both', labelsize=FONT_SIZE)
     boxplot_ax.set_xlabel('NDVI', fontsize=FONT_SIZE)
 
-    plt.tight_layout()
     plt.show()
+    #plt.savefig(f'../03_results/01_forests/01_NDWI/2017_NDWI.png', dpi=500)
     plt.close()
 
 
 def main():
-    image = read_tif('src/img/2017.TIF')
+    image = read_tif('../01_src/img/2017.TIF')
     image = min_max_normalization(image)
     NDVI_channel(image)
 
