@@ -8,13 +8,15 @@ FONT_SIZE = 12
 
 
 def main():
-    data = pd.read_json('data.json', convert_dates=['dates'])
+    forests_data = pd.read_json('../03_results/04_correlation_matrix/forests.json', convert_dates=['dates'])
+    sea_data = pd.read_json('../03_results/04_correlation_matrix/sea.json', convert_dates=['dates'])
+    data = pd.merge(forests_data, sea_data, on='dates')
     data.set_index('dates', inplace=True)
 
-    correlation_matrix = data.corr()
+    correlation_matrix = data.corr(method='pearson')
     mask = np.triu(np.ones_like(correlation_matrix))
 
-    plt.figure(figsize=(10, 8))
+    plt.figure(figsize=(11, 14))
     sns.heatmap(correlation_matrix, annot=True, linewidths=0.5, mask=mask, fmt=".3f", cmap='coolwarm', vmin=-1, vmax=1,
                 cbar=True, square=True, cbar_kws={"shrink": .75}, annot_kws={'fontsize': FONT_SIZE})
     plt.title('Correlation Matrix', fontsize=FONT_SIZE)
