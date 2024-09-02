@@ -46,7 +46,7 @@ def resample_image(image, current_resolution, target_resolution):
     new_height = int(initial_height * scale_factor)
     new_width = int(initial_width * scale_factor)
 
-    return resize(image, (new_height, new_width), order=1, mode='constant', cval=0, anti_aliasing=True,
+    return resize(image, (new_height, new_width), order=0, mode='constant', cval=0, anti_aliasing=True,
                   preserve_range=True)
 
 

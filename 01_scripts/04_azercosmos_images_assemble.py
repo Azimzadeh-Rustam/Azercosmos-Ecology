@@ -57,7 +57,7 @@ def resample_image(image, current_resolution, target_resolution):
     new_height = int(initial_height * scale_factor)
     new_width = int(initial_width * scale_factor)
 
-    return resize(image, (new_height, new_width), order=3, mode='constant', cval=0, anti_aliasing=True,
+    return resize(image, (new_height, new_width), order=1, mode='constant', cval=0, anti_aliasing=True,
                   preserve_range=True)
 
 
@@ -70,7 +70,6 @@ def save_image(image_data, output_path):
         'width': image_data.shape[2],
         'dtype': image_data.dtype
     })
-    image_data = image_data.transpose((1, 2, 0))
     with rasterio.open(output_path, 'w', **meta) as dst:
         dst.write(image_data)
 
