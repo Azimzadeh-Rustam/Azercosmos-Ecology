@@ -25,25 +25,7 @@ def set_plot_style():
 
 def read_tif(path):
     with rasterio.open(path) as raster:
-        data = raster.read()
-        data = data.transpose((1, 2, 0))
-        return data.astype(np.float32)
-
-
-def resample_image(image, current_resolution, target_resolution):
-    scale_factor = current_resolution / target_resolution
-
-    initial_height, initial_width = image.shape[0], image.shape[1]
-
-    new_height = int(initial_height * scale_factor)
-    new_width = int(initial_width * scale_factor)
-
-    return resize(image, (new_height, new_width), order=1, mode='constant', cval=0, anti_aliasing=True,
-                  preserve_range=True)
-
-
-def min_max_normalization(image, band_min_value, band_max_value):
-    return (image - band_min_value) / (band_max_value - band_min_value)
+        return raster.read()
 
 
 def filter_outliers(data):
@@ -79,12 +61,12 @@ def index_channel(image):
     THRESHOLD_LOW = 0.3
     THRESHOLD_HIGH = 1.0
 
-    red_channel = image[:, :, 0]
-    green_channel = image[:, :, 1]
-    blue_channel = image[:, :, 2]
-    nir_channel = image[:, :, 3]
+    blue_channel = image[0]
+    green_channel = image[1]
+    red_channel = image[3]
+    nir_channel = image[4]
 
-    background = np.sum(image, axis=-1)
+    background = np.sum(image, axis=0)
 
     index_channel = (nir_channel - red_channel) / (nir_channel + red_channel + 1e-10)
     area_mask = np.where((index_channel > THRESHOLD_LOW) & (index_channel < THRESHOLD_HIGH), True, False)
@@ -131,7 +113,7 @@ def index_channel(image):
     if len(index_area_anomalies) != 0:
         histogram_ax.hist(index_area_anomalies, label='Anomalies', alpha=0.7, histtype='stepfilled', bins=bins,
                           color='Red')
-    histogram_ax.legend(loc='upper left', fontsize=FONT_SIZE, fancybox=False, edgecolor='black')
+    histogram_ax.legend(loc='best', fontsize=FONT_SIZE, fancybox=False, edgecolor='black')
 
     # ================== BOXPLOT ==================
     boxplot_ax = figure.add_subplot(gs[1:2, 1:2])
@@ -156,9 +138,7 @@ def index_channel(image):
 
 
 def main():
-    image = read_tif('../01_src/03_images/2017.TIF')
-    image = resample_image(image, current_resolution=1.5, target_resolution=30.0)
-    image = min_max_normalization(image, band_min_value=0.0, band_max_value=4095.0)
+    image = read_tif('../00_src/01_sentinel2/03_aoi/R20m/2018/20180703T073611.tif')
     index_channel(image)
 
 

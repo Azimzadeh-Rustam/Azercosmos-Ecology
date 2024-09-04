@@ -3,6 +3,3 @@
 .idea
 *.tif
 *.psd
-net_interp.py
-test.py
-09_my_test.py

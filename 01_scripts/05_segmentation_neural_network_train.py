@@ -96,8 +96,9 @@ def one_hot_encoding(mask):
     background_mask = ~(forest_mask | sea_mask)
 
     one_hot_label = np.zeros((mask_height, mask_width, num_classes), dtype=np.uint8)
+    one_hot_label[background_mask, 0] = 1
     one_hot_label[forest_mask, 1] = 1
-    one_hot_label[sea_mask, 2] = 2
+    one_hot_label[sea_mask, 2] = 1
 
     return one_hot_label
 
