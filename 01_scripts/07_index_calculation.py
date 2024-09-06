@@ -3,13 +3,12 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import gridspec as gridspec
 from matplotlib.ticker import ScalarFormatter
-from skimage.transform import resize
 import scienceplots
 
 FONT_SIZE = 14
 MY_FORMATTER = ScalarFormatter(useMathText=True)
 MY_FORMATTER.set_scientific(True)
-MY_FORMATTER.set_powerlimits((-1, 1))
+MY_FORMATTER.set_powerlimits((-2, 2))
 
 
 def set_plot_style():
@@ -17,7 +16,7 @@ def set_plot_style():
     plt.rcParams.update({
         'font.size': FONT_SIZE,
         'pdf.fonttype': 42,
-        'axes.formatter.limits': (-1, 1),
+        'axes.formatter.limits': (-2, 2),
         'axes.formatter.useoffset': True,
         'axes.formatter.offset_threshold': 1
     })
@@ -63,10 +62,13 @@ def index_channel(image):
 
     blue_channel = image[0]
     green_channel = image[1]
-    red_channel = image[3]
+    red_channel = image[2]
+    red_edge1_channel = image[3]
     nir_channel = image[4]
+    red_edge2_channel = image[5]
+    swir1_channel = image[6]
 
-    background = np.sum(image, axis=0)
+    background = nir_channel
 
     index_channel = (nir_channel - red_channel) / (nir_channel + red_channel + 1e-10)
     area_mask = np.where((index_channel > THRESHOLD_LOW) & (index_channel < THRESHOLD_HIGH), True, False)
@@ -74,14 +76,14 @@ def index_channel(image):
 
     figure = plt.figure(figsize=(15, 8))
     gs = gridspec.GridSpec(nrows=2, ncols=2)
-    gs.update(wspace=0.25, hspace=0.10)
+    gs.update(wspace=0.2, hspace=0.05)
 
     # ================== COLOR MAP ==================
     area_color_map_ax = figure.add_subplot(gs[0:2, 0:1])
     area_color_map_ax.imshow(background, cmap='Grays')
     color_map = area_color_map_ax.imshow(area_map, cmap='RdYlGn', vmin=-1, vmax=1)
     plt.colorbar(color_map, ax=area_color_map_ax, label=r'$NDVI = \frac{NIR - Red}{NIR + Red}$',
-                 orientation='horizontal')
+                 orientation='horizontal', shrink=.75)
     area_color_map_ax.set_title('NDVI color map for assessing forest health')
     area_color_map_ax.axis('off')
 
@@ -117,14 +119,12 @@ def index_channel(image):
 
     # ================== BOXPLOT ==================
     boxplot_ax = figure.add_subplot(gs[1:2, 1:2])
-    #boxplot_ax.xaxis.set_major_formatter(MY_FORMATTER)
-    #boxplot_ax.xaxis.get_offset_text().set_size(FONT_SIZE)
     if len(index_area_anomalies) != 0:
         boxplot_ax.boxplot([index_area_data, index_area_filtered_data], vert=False, widths=0.3)
         boxplot_ax.tick_params(top=True, right=True, bottom=True, left=True,
                                labeltop=False, labelright=False, labelbottom=True, labelleft=True,
                                axis='both', labelsize=FONT_SIZE)
-        boxplot_ax.set_yticklabels(['Original Data', 'Filtered Data'], rotation=60, fontsize=FONT_SIZE)
+        boxplot_ax.set_yticklabels(['Original Data', 'Filtered Data'], rotation=45, fontsize=FONT_SIZE)
     else:
         boxplot_ax.boxplot(index_area_data, vert=False)
         boxplot_ax.tick_params(top=True, right=False, bottom=True, left=False,
@@ -138,7 +138,7 @@ def index_channel(image):
 
 
 def main():
-    image = read_tif('../00_src/01_sentinel2/03_aoi/R20m/2018/20180703T073611.tif')
+    image = read_tif('../00_src/01_sentinel2/03_aoi/R20m/20180703T073611.tif')
     index_channel(image)
 
 

@@ -20,7 +20,7 @@ PATCH_SIZE = 256
 INPUT_CHANNELS = 4
 MY_FORMATTER = ScalarFormatter(useMathText=True)
 MY_FORMATTER.set_scientific(True)
-MY_FORMATTER.set_powerlimits((-1, 1))
+MY_FORMATTER.set_powerlimits((-2, 2))
 
 
 def set_plot_style():
@@ -28,7 +28,7 @@ def set_plot_style():
     plt.rcParams.update({
         'font.size': FONT_SIZE,
         'pdf.fonttype': 42,
-        'axes.formatter.limits': (-1, 1),
+        'axes.formatter.limits': (-2, 2),
         'axes.formatter.useoffset': True,
         'axes.formatter.offset_threshold': 1
     })

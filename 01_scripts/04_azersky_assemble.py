@@ -68,7 +68,7 @@ def main():
     image = merge_parts(PATHS)
     image = resample_image(image, current_resolution=1.5, target_resolution=5.0)
     image = min_max_normalization(image, band_min_value=0.0, band_max_value=4095.0)
-    #image = spectral_reconstruction(image)
+    image = restore_spectra(image)
     save_image(image, OUTPUT_PATH)
 
 

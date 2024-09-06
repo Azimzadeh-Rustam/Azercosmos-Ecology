@@ -9,15 +9,14 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (Input, Conv2D, MaxPooling2D, Conv2DTranspose, concatenate, Dropout)
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras import backend as bk
-from skimage.transform import resize
 import scienceplots
 
 FONT_SIZE = 14
 PATCH_SIZE = 256
-INPUT_CHANNELS = 4
+INPUT_CHANNELS = 3
 MY_FORMATTER = ScalarFormatter(useMathText=True)
 MY_FORMATTER.set_scientific(True)
-MY_FORMATTER.set_powerlimits((-1, 1))
+MY_FORMATTER.set_powerlimits((-2, 2))
 
 
 def set_plot_style():
@@ -25,53 +24,33 @@ def set_plot_style():
     plt.rcParams.update({
         'font.size': FONT_SIZE,
         'pdf.fonttype': 42,
-        'axes.formatter.limits': (-1, 1),
+        'axes.formatter.limits': (-2, 2),
         'axes.formatter.useoffset': True,
         'axes.formatter.offset_threshold': 1
     })
 
 
-def read_tif(path):
+def read_raster(path: str) -> np.ndarray:
     with rasterio.open(path) as raster:
-        data = raster.read()
-        data = data.transpose((1, 2, 0))
-        return data.astype(np.float32)
+        array = raster.read()
+        return array.transpose((1, 2, 0))
 
 
-def resample_image(image, current_resolution, target_resolution):
-    scale_factor = current_resolution / target_resolution
-
-    initial_height, initial_width = image.shape[0], image.shape[1]
-
-    new_height = int(initial_height * scale_factor)
-    new_width = int(initial_width * scale_factor)
-
-    return resize(image, (new_height, new_width), order=0, mode='constant', cval=0, anti_aliasing=True,
-                  preserve_range=True)
-
-
-def min_max_normalization(image, band_min_value, band_max_value):
-    return (image - band_min_value) / (band_max_value - band_min_value)
-
-
-def pad_to_multiple(image, patch_size):
+def pad_to_multiple(image: np.ndarray, patch_size: int) -> np.ndarray:
     height, width = image.shape[0], image.shape[1]
 
     pad_height = (patch_size - height % patch_size) % patch_size
     pad_width = (patch_size - width % patch_size) % patch_size
 
-    if pad_height == 0 and pad_width == 0:
-        return image
-
     paddings = [(0, pad_height), (0, pad_width), (0, 0)]
 
-    return np.pad(image, paddings, mode='constant', constant_values=0)
+    return np.pad(image, paddings, mode='constant', constant_values=np.nan)
 
 
-def split_into_patches(image, patch_size):
+def split_into_patches(image: np.ndarray, patch_size: int) -> np.ndarray:
     patches = list()
 
-    image_height, image_width, num_channels = image.shape
+    image_height, image_width, _ = image.shape
 
     for start_y in range(0, image_height, patch_size):
         for start_x in range(0, image_width, patch_size):
@@ -81,18 +60,33 @@ def split_into_patches(image, patch_size):
             patch = image[start_y:end_y, start_x:end_x, :]
             patches.append(patch)
 
-    return patches
+    return np.array(patches)
 
 
-def one_hot_encoding(mask):
-    mask_height, mask_width = mask.shape[0], mask.shape[1]
+def one_hot_encoding(image: np.ndarray) -> np.ndarray:
+    NDVI_THRESHOLD_LOW = 0.4
+    NDVI_THRESHOLD_HIGH = 1.0
+
+    MNDWI_THRESHOLD_LOW = 0.0
+    MNDWI_THRESHOLD_HIGH = 1.0
+
+    mask_height, mask_width, _ = image.shape
     num_classes = 3
 
-    green_channel = mask[:, :, 1]
-    blue_channel = mask[:, :, 2]
+    blue_channel = image[..., 0]
+    green_channel = image[..., 1]
+    red_channel = image[..., 2]
+    red_edge1_channel = image[..., 3]
+    nir_channel = image[..., 4]
+    red_edge2_channel = image[..., 5]
+    swir1_channel = image[..., 6]
 
-    forest_mask = green_channel > 0
-    sea_mask = blue_channel > 0
+    ndvi_channel = (nir_channel - red_channel) / (nir_channel + red_channel + 1e-10)
+    forest_mask = np.where((ndvi_channel > NDVI_THRESHOLD_LOW) & (ndvi_channel < NDVI_THRESHOLD_HIGH), True, False)
+
+    mndwi_channel = (green_channel - swir1_channel) / (green_channel + swir1_channel + 1e-10)
+    sea_mask = np.where((mndwi_channel > MNDWI_THRESHOLD_LOW) & (mndwi_channel < MNDWI_THRESHOLD_HIGH), True, False)
+
     background_mask = ~(forest_mask | sea_mask)
 
     one_hot_label = np.zeros((mask_height, mask_width, num_classes), dtype=np.uint8)
@@ -103,7 +97,7 @@ def one_hot_encoding(mask):
     return one_hot_label
 
 
-def jaccard_index(y_true, y_prediction):
+def jaccard_index(y_true: bk.Tensor, y_prediction: bk.Tensor) -> bk.Tensor:
     y_true_flatten = bk.flatten(y_true)
     y_prediction_flatten = bk.flatten(y_prediction)
     intersection = bk.sum(y_true_flatten * y_prediction_flatten)
@@ -111,7 +105,7 @@ def jaccard_index(y_true, y_prediction):
     return index_value
 
 
-def multi_unet_model(patch_height, patch_width, num_input_channels, num_classes):
+def multi_unet_model(patch_height: int, patch_width: int, num_input_channels: int, num_classes: int) -> Model:
 
     inputs = Input((patch_height, patch_width, num_input_channels))
 
@@ -170,11 +164,11 @@ def multi_unet_model(patch_height, patch_width, num_input_channels, num_classes)
     return model
 
 
-def plot_history(history):
+def plot_history(history) -> None:
     figure, axes = plt.subplots(1, 2, figsize=(10, 3.5))
 
     axis1 = axes[0]
-    axis1.set_ylabel('Loss Function', fontsize=14)
+    axis1.set_ylabel('Categorical Crossentropy', fontsize=14)
     axis1.set_xlabel('Number of Epochs', fontsize=14)
     axis1.tick_params(axis='both', labelsize=10)
     axis1.plot(history.history['loss'], label='Train Data')
@@ -193,66 +187,70 @@ def plot_history(history):
     plt.close()
 
 
-def visualize_patches(model, images, masks, number):
+def min_max_normalization(image: np.ndarray, band_min_value: float, band_max_value: float) -> np.ndarray:
+    return (image - band_min_value) / (band_max_value - band_min_value)
+
+
+def visualize_patches(model: Model, images: np.ndarray, labels: np.ndarray, number: int) -> None:
     num_images = images.shape[0]
     colors = np.array([
         [0, 0, 0],  # Background
-        [0, 1, 0],  # Forests
-        [0, 0, 1]  # Sea
+        [0, 255, 0],  # Forests
+        [0, 0, 255]  # Sea
     ])
 
-    figure, axes = plt.subplots(nrows=1, ncols=3, figsize=(18, 5))
-
     for _ in range(number):
-        random_id = random.randint(0, num_images)
-        image = images[random_id, :, :, :4]
-        prediction = model.predict(image)
-        prediction = np.argmax(prediction, axis=-1)
-        mask = masks[random_id, :, :, :3]
+        figure, axes = plt.subplots(nrows=1, ncols=3, figsize=(18, 5))
 
+        random_id = random.randint(0, num_images - 1)
+
+        image = images[random_id, :, :, :3]
+        p_low, p_high = np.nanpercentile(image, [0.5, 99.5])
+        clipped_image = np.clip(image, p_low, p_high)
+        normalized_image = min_max_normalization(clipped_image, p_low, p_high)
         axis1 = axes[0]
-        axis1.imshow(image[..., :3], vmin=0, vmax=1)
+        axis1.imshow(normalized_image, vmin=0, vmax=1)
+        axis1.set_title("Satellite Image")
         axis1.axis('off')
 
+        label = labels[random_id, ...]
+        mask = np.argmax(label, axis=-1)
+        mask_map = colors[mask]
         axis2 = axes[1]
-        axis2.imshow(mask, vmin=0, vmax=1)
+        axis2.imshow(mask_map, vmin=0, vmax=255)
+        axis2.set_title("Mask")
         axis2.axis('off')
 
-        axis2 = axes[2]
+        prediction = model.predict(np.expand_dims(image, axis=0))
+        prediction = np.argmax(prediction.squeeze(), axis=-1)
         prediction_map = colors[prediction]
-        axis2.imshow(prediction_map, vmin=0, vmax=1)
-        axis2.axis('off')
+        axis3 = axes[2]
+        axis3.imshow(prediction_map, vmin=0, vmax=255)
+        axis3.set_title("Prediction")
+        axis3.axis('off')
 
         plt.tight_layout()
         plt.show()
         plt.close()
 
 
-def main():
-    image = read_tif('../01_src/03_images/2017.TIF')
-    mask = read_tif('../01_src/mask.tif')
-
-    image = image[:8960, :, :4]
-    mask = mask[:8960, :, :]
-
-    #image = resample_image(image, current_resolution=1.5, target_resolution=30.0)
-    #mask = resample_image(mask, current_resolution=1.5, target_resolution=30.0)
-
-    image = min_max_normalization(image, band_min_value=0.0, band_max_value=4095.0)
-    mask = min_max_normalization(mask, band_min_value=0.0, band_max_value=255.0)
+def main() -> None:
+    image = read_raster('../00_src/01_sentinel2/03_aoi/R20m/20220816T073619.tif')
 
     multiple_image = pad_to_multiple(image, patch_size=PATCH_SIZE)
-    multiple_mask = pad_to_multiple(mask, patch_size=PATCH_SIZE)
+    label = one_hot_encoding(multiple_image)
 
-    image_patches = split_into_patches(multiple_image, patch_size=PATCH_SIZE)
-    mask_patches = split_into_patches(multiple_mask, patch_size=PATCH_SIZE)
-    label_patches = [one_hot_encoding(mask_patch) for mask_patch in mask_patches]
+    mask = np.argmax(label, axis=-1)
+    pixel_counts = np.bincount(mask.flatten())
+    total_pixels = mask.size
+    class_weights = {i: total_pixels / (len(pixel_counts) * pixel_counts[i]) for i in range(len(pixel_counts))}
 
-    image_patches = np.array(image_patches)
-    mask_patches = np.array(mask_patches)
-    label_patches = np.array(label_patches)
+    input_image = np.nan_to_num(multiple_image[..., :3], nan=-1)
 
-    total_classes = len(np.unique(label_patches))
+    image_patches = split_into_patches(input_image, patch_size=PATCH_SIZE)
+    label_patches = split_into_patches(label, patch_size=PATCH_SIZE)
+
+    total_classes = 3
 
     input_train, input_test, output_train, output_test = train_test_split(image_patches, label_patches,
                                                                           test_size=0.3, random_state=42)
@@ -260,14 +258,14 @@ def main():
     neural_network = multi_unet_model(patch_height=PATCH_SIZE, patch_width=PATCH_SIZE,
                                       num_input_channels=INPUT_CHANNELS, num_classes=total_classes)
     neural_network.compile(optimizer="adam", loss='categorical_crossentropy', metrics=["accuracy", jaccard_index])
-    callbacks = [EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, verbose=1)]
-    training_history = neural_network.fit(input_train, output_train, epochs=150, batch_size=16, verbose=1,
-                                          callbacks=callbacks, validation_split=0.2, shuffle=True)
-    neural_network.save('../03_results/01_neural_network/forests_sea_segmentation.h5')
+    callbacks = [EarlyStopping(monitor='val_loss', patience=20, restore_best_weights=True, verbose=1)]
+    training_history = neural_network.fit(input_train, output_train, class_weight=class_weights, epochs=150,
+                                          batch_size=8, verbose=1, callbacks=callbacks, validation_split=0.2,
+                                          shuffle=True)
+    #neural_network.save('../02_results/01_neural_networks/02_forests_sea_segmentation/01_pre-trained_model/forests_sea_segmentation.h5')
 
+    visualize_patches(model=neural_network, images=input_test, labels=output_test, number=20)
     plot_history(training_history)
-    #plot_roc_curve(neural_network, input_test, output_test)
-    visualize_patches(neural_network, input_test, output_test, 20)
 
 
 if __name__ == '__main__':

@@ -1,9 +1,9 @@
-import matplotlib.pyplot as plt
 import rasterio
 import numpy as np
 from skimage.transform import resize
 import torch
 import RRDBNet_arch as arch
+from rasterio.transform import Affine
 
 
 PATCH_SIZE = 256
@@ -47,10 +47,42 @@ def pad_to_multiple(image: np.ndarray, patch_size: int) -> np.ndarray:
 
     paddings = [(0, 0), (0, pad_height), (0, pad_width)]
 
-    return np.pad(image, paddings, mode='constant', constant_values=0)
+    return np.pad(image, paddings, mode='constant', constant_values=np.nan)
 
 
-def increase_spatial_resolution(image: np.ndarray, model: torch.nn.Module, patch_size: int) -> np.ndarray:
+def increase_spatial_resolution(image: np.ndarray, model: torch.nn.Module) -> np.ndarray:
+    num_channels, initial_height, initial_width = image.shape
+
+    scale_factor = 4
+    scaled_height = initial_height * scale_factor
+    scaled_width = initial_width * scale_factor
+    scaled_image = np.zeros((num_channels, scaled_height, scaled_width), dtype=np.float32)
+
+    for channel_index in range(2, num_channels):
+        if channel_index == 2:
+            rgb_indices = [2, 1, 0]
+            true_color_composite = image[rgb_indices, ...]
+        else:
+            channel = image[channel_index]
+            zeros_channel = np.zeros_like(channel)
+            true_color_composite = np.stack([channel, zeros_channel, zeros_channel], axis=0)
+
+        true_color_tensor = torch.from_numpy(true_color_composite).to(dtype=torch.float32)
+        true_color_tensor = true_color_tensor.unsqueeze(0)
+        low_resolution_input = true_color_tensor.to(DEVICE)
+        with torch.no_grad():
+            high_resolution_output = model(low_resolution_input).data.squeeze().float().cpu().clamp_(0, 1).numpy()
+
+        if channel_index == 2:
+            bgr_indices = [2, 1, 0]
+            scaled_image[:3, ...] = high_resolution_output[bgr_indices, ...]
+        else:
+            scaled_image[channel_index] = high_resolution_output[0]
+
+    return scaled_image
+
+
+def increase_spatial_resolution_by_patches(image: np.ndarray, model: torch.nn.Module, patch_size: int) -> np.ndarray:
     num_channels, initial_height, initial_width = image.shape
 
     multiple_image = pad_to_multiple(image, patch_size)
@@ -101,13 +133,23 @@ def get_metadata(path: str) -> dict:
         return raster.meta.copy()
 
 
-def save_raster(image: np.ndarray, meta: dict, output_path: str):
+def save_raster(image: np.ndarray, meta: dict, output_path: str) -> None:
+    initial_height, initial_width = meta['height'], meta['width']
+    num_channels, new_height, new_width = image.shape
+
+    x_scale = initial_width / new_width
+    y_scale = initial_height / new_height
+
+    new_transform = meta['transform'] * Affine.scale(x_scale, y_scale)
+
     meta.update({
         'driver': 'GTiff',
-        'count': image.shape[0],
-        'height': image.shape[1],
-        'width': image.shape[2],
+        'count': num_channels,
+        'height': new_height,
+        'width': new_width,
         'dtype': str(image.dtype),
+        'crs': rasterio.crs.CRS.from_epsg(32639),
+        'transform': new_transform,
         "compress": "lzw"
     })
 
@@ -133,7 +175,8 @@ def main():
     image = min_max_normalization(image, band_min_value=0.0, band_max_value=65535.0) # 16 bit
 
     esrgan_model = load_esrgan_model()
-    image = increase_spatial_resolution(image=image, model=esrgan_model, patch_size=PATCH_SIZE)
+    image = increase_spatial_resolution(image=image, model=esrgan_model)
+    #image = increase_spatial_resolution_by_patches(image=image, model=esrgan_model, patch_size=PATCH_SIZE)
 
     meta_data = get_metadata(band_paths[0])
     save_raster(image, meta=meta_data, output_path=output_path)
