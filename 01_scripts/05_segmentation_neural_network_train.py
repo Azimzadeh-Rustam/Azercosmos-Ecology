@@ -13,7 +13,7 @@ import scienceplots
 
 FONT_SIZE = 14
 PATCH_SIZE = 256
-INPUT_CHANNELS = 3
+NUM_INPUT_CHANNELS = 3
 MY_FORMATTER = ScalarFormatter(useMathText=True)
 MY_FORMATTER.set_scientific(True)
 MY_FORMATTER.set_powerlimits((-2, 2))
@@ -33,7 +33,7 @@ def set_plot_style():
 def read_raster(path: str) -> np.ndarray:
     with rasterio.open(path) as raster:
         array = raster.read()
-        return array.transpose((1, 2, 0))
+        return array.transpose((1, 2, 0)) # (height, width, num_channels)
 
 
 def pad_to_multiple(image: np.ndarray, patch_size: int) -> np.ndarray:
@@ -64,7 +64,7 @@ def split_into_patches(image: np.ndarray, patch_size: int) -> np.ndarray:
 
 
 def one_hot_encoding(image: np.ndarray) -> np.ndarray:
-    NDVI_THRESHOLD_LOW = 0.4
+    NDVI_THRESHOLD_LOW = 0.36
     NDVI_THRESHOLD_HIGH = 1.0
 
     MNDWI_THRESHOLD_LOW = 0.0
@@ -73,12 +73,9 @@ def one_hot_encoding(image: np.ndarray) -> np.ndarray:
     mask_height, mask_width, _ = image.shape
     num_classes = 3
 
-    blue_channel = image[..., 0]
     green_channel = image[..., 1]
     red_channel = image[..., 2]
-    red_edge1_channel = image[..., 3]
     nir_channel = image[..., 4]
-    red_edge2_channel = image[..., 5]
     swir1_channel = image[..., 6]
 
     ndvi_channel = (nir_channel - red_channel) / (nir_channel + red_channel + 1e-10)
@@ -95,6 +92,14 @@ def one_hot_encoding(image: np.ndarray) -> np.ndarray:
     one_hot_label[sea_mask, 2] = 1
 
     return one_hot_label
+
+
+def calculate_class_weights(label: np.array) -> dict:
+    mask = np.argmax(label, axis=-1)
+    class_pixel_counts = np.bincount(mask.flatten())
+    num_classes = len(class_pixel_counts)
+    total_pixels = mask.size
+    return {i: total_pixels / (num_classes * np.maximum(class_pixel_counts[i], 1)) for i in range(num_classes)}
 
 
 def jaccard_index(y_true: bk.Tensor, y_prediction: bk.Tensor) -> bk.Tensor:
@@ -164,50 +169,33 @@ def multi_unet_model(patch_height: int, patch_width: int, num_input_channels: in
     return model
 
 
-def plot_history(history) -> None:
-    figure, axes = plt.subplots(1, 2, figsize=(10, 3.5))
-
-    axis1 = axes[0]
-    axis1.set_ylabel('Categorical Crossentropy', fontsize=14)
-    axis1.set_xlabel('Number of Epochs', fontsize=14)
-    axis1.tick_params(axis='both', labelsize=10)
-    axis1.plot(history.history['loss'], label='Train Data')
-    axis1.plot(history.history['val_loss'], label='Validation Data')
-    axis1.legend(loc='best', fontsize=10, fancybox=False, edgecolor='black')
-
-    axis2 = axes[1]
-    axis2.set_ylabel('Jaccard Index', fontsize=14)
-    axis2.set_xlabel('Number of Epochs', fontsize=14)
-    axis2.tick_params(axis='both', labelsize=10)
-    axis2.plot(history.history['jaccard_index'], label='Train IoU')
-    axis2.plot(history.history['val_jaccard_index'], label='Validation IoU')
-    axis2.legend(loc='best', fontsize=10, fancybox=False, edgecolor='black')
-
-    plt.show()
-    plt.close()
-
-
 def min_max_normalization(image: np.ndarray, band_min_value: float, band_max_value: float) -> np.ndarray:
     return (image - band_min_value) / (band_max_value - band_min_value)
 
 
+def normalize_with_clipping(image: np.ndarray) -> np.ndarray:
+    p_low, p_high = np.nanpercentile(image, [0.5, 99.5])
+    clipped_image = np.clip(image, p_low, p_high)
+    return min_max_normalization(clipped_image, p_low, p_high)
+
+
 def visualize_patches(model: Model, images: np.ndarray, labels: np.ndarray, number: int) -> None:
     num_images = images.shape[0]
+
     colors = np.array([
-        [0, 0, 0],  # Background
-        [0, 255, 0],  # Forests
-        [0, 0, 255]  # Sea
+        #R  G  B
+        [0, 0, 0],   # Background - Black
+        [0, 255, 0], # Forests - Green
+        [0, 0, 255]  # Sea - Blue
     ])
 
-    for _ in range(number):
+    for i in range(number):
         figure, axes = plt.subplots(nrows=1, ncols=3, figsize=(18, 5))
 
         random_id = random.randint(0, num_images - 1)
 
         image = images[random_id, :, :, :3]
-        p_low, p_high = np.nanpercentile(image, [0.5, 99.5])
-        clipped_image = np.clip(image, p_low, p_high)
-        normalized_image = min_max_normalization(clipped_image, p_low, p_high)
+        normalized_image = normalize_with_clipping(image)
         axis1 = axes[0]
         axis1.imshow(normalized_image, vmin=0, vmax=1)
         axis1.set_title("Satellite Image")
@@ -218,7 +206,7 @@ def visualize_patches(model: Model, images: np.ndarray, labels: np.ndarray, numb
         mask_map = colors[mask]
         axis2 = axes[1]
         axis2.imshow(mask_map, vmin=0, vmax=255)
-        axis2.set_title("Mask")
+        axis2.set_title("True Mask")
         axis2.axis('off')
 
         prediction = model.predict(np.expand_dims(image, axis=0))
@@ -226,12 +214,42 @@ def visualize_patches(model: Model, images: np.ndarray, labels: np.ndarray, numb
         prediction_map = colors[prediction]
         axis3 = axes[2]
         axis3.imshow(prediction_map, vmin=0, vmax=255)
-        axis3.set_title("Prediction")
+        axis3.set_title("NN Prediction")
         axis3.axis('off')
 
-        plt.tight_layout()
-        plt.show()
+        plt.savefig(f'../02_results/01_neural_networks/02_forests_sea_segmentation/02_performance_plots/compare_{i}', dpi=300)
         plt.close()
+
+
+def plot_history(history) -> None:
+    figure, axes = plt.subplots(1, 2, figsize=(10, 3.5))
+
+    axis1 = axes[0]
+    axis1.set_ylabel('Categorical Crossentropy', fontsize=FONT_SIZE)
+    axis1.set_xlabel('Number of Epochs', fontsize=FONT_SIZE)
+    axis1.xaxis.set_major_formatter(MY_FORMATTER)
+    axis1.yaxis.set_major_formatter(MY_FORMATTER)
+    axis1.xaxis.get_offset_text().set_size(FONT_SIZE)
+    axis1.yaxis.get_offset_text().set_size(FONT_SIZE)
+    axis1.tick_params(axis='both', labelsize=FONT_SIZE)
+    axis1.plot(history.history['loss'], label='Train Data')
+    axis1.plot(history.history['val_loss'], label='Validation Data')
+    axis1.legend(loc='best', fontsize=FONT_SIZE, fancybox=False, edgecolor='black')
+
+    axis2 = axes[1]
+    axis2.set_ylabel('Jaccard Index', fontsize=FONT_SIZE)
+    axis2.set_xlabel('Number of Epochs', fontsize=FONT_SIZE)
+    axis2.xaxis.set_major_formatter(MY_FORMATTER)
+    axis2.yaxis.set_major_formatter(MY_FORMATTER)
+    axis2.xaxis.get_offset_text().set_size(FONT_SIZE)
+    axis2.yaxis.get_offset_text().set_size(FONT_SIZE)
+    axis2.tick_params(axis='both', labelsize=FONT_SIZE)
+    axis2.plot(history.history['jaccard_index'], label='Train IoU')
+    axis2.plot(history.history['val_jaccard_index'], label='Validation IoU')
+    axis2.legend(loc='best', fontsize=10, fancybox=False, edgecolor='black')
+
+    plt.savefig(f'../02_results/01_neural_networks/02_forests_sea_segmentation/02_performance_plots/training_history.png', dpi=300)
+    plt.close()
 
 
 def main() -> None:
@@ -240,10 +258,7 @@ def main() -> None:
     multiple_image = pad_to_multiple(image, patch_size=PATCH_SIZE)
     label = one_hot_encoding(multiple_image)
 
-    mask = np.argmax(label, axis=-1)
-    pixel_counts = np.bincount(mask.flatten())
-    total_pixels = mask.size
-    class_weights = {i: total_pixels / (len(pixel_counts) * pixel_counts[i]) for i in range(len(pixel_counts))}
+    class_weights = calculate_class_weights(label)
 
     input_image = np.nan_to_num(multiple_image[..., :3], nan=-1)
 
@@ -253,16 +268,17 @@ def main() -> None:
     total_classes = 3
 
     input_train, input_test, output_train, output_test = train_test_split(image_patches, label_patches,
-                                                                          test_size=0.3, random_state=42)
+                                                                          test_size=0.3, shuffle=True, random_state=42)
 
     neural_network = multi_unet_model(patch_height=PATCH_SIZE, patch_width=PATCH_SIZE,
-                                      num_input_channels=INPUT_CHANNELS, num_classes=total_classes)
+                                      num_input_channels=NUM_INPUT_CHANNELS, num_classes=total_classes)
     neural_network.compile(optimizer="adam", loss='categorical_crossentropy', metrics=["accuracy", jaccard_index])
-    callbacks = [EarlyStopping(monitor='val_loss', patience=20, restore_best_weights=True, verbose=1)]
+    callbacks = [EarlyStopping(monitor='val_loss', patience=50, restore_best_weights=True, verbose=1)]
     training_history = neural_network.fit(input_train, output_train, class_weight=class_weights, epochs=150,
-                                          batch_size=8, verbose=1, callbacks=callbacks, validation_split=0.2,
+                                          batch_size=32, verbose=1, callbacks=callbacks, validation_split=0.2,
                                           shuffle=True)
-    #neural_network.save('../02_results/01_neural_networks/02_forests_sea_segmentation/01_pre-trained_model/forests_sea_segmentation.h5')
+    neural_network.save('../02_results/01_neural_networks/02_forests_sea_segmentation/01_pre-trained_model/forests_sea_segmentation_R5m.h5',
+                        save_format='h5', custom_objects={'jaccard_index': jaccard_index}, include_optimizer=True)
 
     visualize_patches(model=neural_network, images=input_test, labels=output_test, number=20)
     plot_history(training_history)

@@ -1,8 +1,27 @@
 import pandas as pd
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
+from sklearn.cluster import DBSCAN
 from statsmodels.sandbox.regression.predstd import wls_prediction_std
+from kneed import KneeLocator
+from sklearn.neighbors import NearestNeighbors
 import numpy as np
+
+
+def detect_outliers(data, independent, dependent, eps=10, min_samples=2):
+    considered_features = data[[independent, dependent]]
+    features = considered_features.values
+
+    model = DBSCAN(eps=eps, min_samples=min_samples)
+    model.fit(features)
+
+    labels = model.labels_
+    is_outlier = labels == -1
+
+    filtered_data = data.loc[~is_outlier]
+    outliers = data.loc[is_outlier]
+
+    return filtered_data, outliers
 
 
 def build_linear_regression(data, independent, dependent):
@@ -12,14 +31,18 @@ def build_linear_regression(data, independent, dependent):
     return model, X, y
 
 
-def plot_regression(X, y, model, independent, dependent):
+def plot_regression(X, y, model, independent, dependent, outliers):
     plt.figure(figsize=(12, 8))
-    plt.scatter(X[independent], y, color='blue', label='Actual Data')  # Реальные данные
-    plt.plot(X[independent], model.predict(X), color='red', label='Fitted Line')  # Линия регрессии
+    plt.scatter(X[independent], y, color='blue', label='Actual Data')
+    plt.plot(X[independent], model.predict(X), color='red', label='Fitted Line')
 
     prstd, iv_l, iv_u = wls_prediction_std(model)
     plt.plot(X[independent], iv_l, 'r--', label='Lower Confidence Limit (95%)')
     plt.plot(X[independent], iv_u, 'r--', label='Upper Confidence Limit (95%)')
+
+    if not outliers.empty:
+        plt.scatter(outliers[independent], outliers[dependent], color='red', s=50, edgecolor='black', alpha=0.65,
+                    label='Anomalies')
 
     pearson_r = np.corrcoef(X[independent], y)[0, 1]
 
@@ -47,18 +70,18 @@ def plot_regression(X, y, model, independent, dependent):
 
 
 def main():
-    forests_data = pd.read_json('../03_results/04_correlation_matrix/forests.json', convert_dates=['dates'])
-    sea_data = pd.read_json('../03_results/04_correlation_matrix/sea.json', convert_dates=['dates'])
+    forests_data = pd.read_json('../02_results/04_forests_indices/forests.json', convert_dates=['dates'])
+    sea_data = pd.read_json('../02_results/05_sea_indices/sea.json', convert_dates=['dates'])
     data = pd.merge(forests_data, sea_data, on='dates')
     data.set_index('dates', inplace=True)
 
-    # Проверить что на оси y должны быть только индексы моря, а на оси x только индексы лесов
     features = data.columns
     for dependent in features:
         for independent in features:
             if dependent != independent:
-                model, X, y = build_linear_regression(data, independent, dependent)
-                plot_regression(X, y, model, independent, dependent)
+                clean_data, anomalies = detect_outliers(data, independent, dependent)
+                model, X, y = build_linear_regression(clean_data, independent, dependent)
+                plot_regression(X, y, model, independent, dependent, anomalies)
 
 
 if __name__ == '__main__':

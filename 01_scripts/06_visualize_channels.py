@@ -25,15 +25,6 @@ def set_plot_style() -> None:
     })
 
 
-def main() -> None:
-    PATH = '../00_src/01_sentinel2/03_aoi/R20m/20180703T073611.tif'
-
-    image = read_raster(PATH)
-    visualise_rgb(image)
-    visualize_channels(image)
-    channel_histograms(image)
-
-
 def read_raster(path: str) -> np.ndarray:
     with rasterio.open(path) as raster:
         return raster.read()
@@ -57,15 +48,17 @@ def visualise_rgb(image: np.ndarray) -> None:
 
     plt.imshow(normalized_image, vmin=0, vmax=1)
     plt.axis('off')
-    plt.tight_layout()
-    plt.show()
+
+    #plt.show()
+    plt.savefig(f'../02_results/01_sentinel2/01_R20m/20240805T073619_aoi.png', dpi=300)
     plt.close()
 
 
 def visualize_channels(image):
     CMAPS = ['Blues', 'Greens', 'Reds', 'gray', 'gray', 'gray', 'gray']
 
-    figure, axes = plt.subplots(FIGURE_NUM_ROWS, FIGURE_NUM_COLUMNS, figsize=(14, 14))
+    figure, axes = plt.subplots(FIGURE_NUM_ROWS, FIGURE_NUM_COLUMNS, figsize=(18, 18))
+    figure.subplots_adjust(hspace=0.3)
 
     for num_channel, axis in enumerate(axes.flatten()):
         axis.axis('off')
@@ -76,8 +69,8 @@ def visualize_channels(image):
             axis.set_title(f'{CHANNELS[num_channel]} channel')
             figure.colorbar(color_map, ax=axis)
 
-    plt.tight_layout()
-    plt.show()
+    #plt.show()
+    plt.savefig(f'../02_results/01_sentinel2/01_R20m/20240805T073619_channels.png', dpi=300)
     plt.close()
 
 
@@ -86,6 +79,7 @@ def channel_histograms(image):
     num_channel = 0
 
     figure, axes = plt.subplots(FIGURE_NUM_ROWS, FIGURE_NUM_COLUMNS, figsize=(14, 14))
+    figure.subplots_adjust(wspace=0.3, hspace=0.6)
 
     for row in range(FIGURE_NUM_ROWS):
         for column in range(FIGURE_NUM_COLUMNS):
@@ -104,7 +98,8 @@ def channel_histograms(image):
 
                 ax = axes[row, column]
                 ax.set_title(f'{CHANNELS[num_channel]} channel')
-                ax.set_ylabel('Frequency', fontsize=FONT_SIZE)
+                ax.set_ylabel('Reflected light intensity', fontsize=FONT_SIZE)
+                ax.set_xlabel('Band saturation', fontsize=FONT_SIZE)
                 ax.xaxis.set_major_formatter(MY_FORMATTER)
                 ax.yaxis.set_major_formatter(MY_FORMATTER)
                 ax.xaxis.get_offset_text().set_size(FONT_SIZE)
@@ -123,9 +118,18 @@ def channel_histograms(image):
             else:
                 axes[row, column].axis('off')
 
-    plt.tight_layout()
-    plt.show()
+    #plt.show()
+    plt.savefig(f'../02_results/01_sentinel2/01_R20m/20240805T073619_histograms.png', dpi=300)
     plt.close()
+
+
+def main() -> None:
+    PATH = '../00_src/01_sentinel2/03_aoi/R20m/20240805T073619.tif'
+
+    image = read_raster(PATH)
+    visualise_rgb(image)
+    visualize_channels(image)
+    channel_histograms(image)
 
 
 if __name__ == '__main__':

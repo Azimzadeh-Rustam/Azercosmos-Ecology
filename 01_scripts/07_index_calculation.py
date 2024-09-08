@@ -27,7 +27,7 @@ def read_tif(path):
         return raster.read()
 
 
-def filter_outliers(data):
+def detect_outliers(data):
     if data.ndim == 1:
         data = data.reshape(-1, 1)
 
@@ -72,6 +72,14 @@ def index_channel(image):
 
     index_channel = (nir_channel - red_channel) / (nir_channel + red_channel + 1e-10)
     area_mask = np.where((index_channel > THRESHOLD_LOW) & (index_channel < THRESHOLD_HIGH), True, False)
+
+    # Calculate forest area
+    spatial_resolution = 20
+    pixel_area_m2 = spatial_resolution ** 2
+    forest_pixel_count = np.nansum(area_mask)
+    forest_area_m2 = forest_pixel_count * pixel_area_m2
+    forest_area_km2 = int(forest_area_m2 / 1e6)
+
     area_map = np.where(area_mask, index_channel, np.nan)
 
     figure = plt.figure(figsize=(15, 8))
@@ -92,7 +100,7 @@ def index_channel(image):
 
     index_area_pattern = index_channel[area_mask]
     index_area_data = index_area_pattern.ravel()
-    index_area_filtered_data, index_area_anomalies = filter_outliers(index_area_data)
+    index_area_filtered_data, index_area_anomalies = detect_outliers(index_area_data)
     index_data_mean = np.mean(index_area_filtered_data)
     index_data_median = np.median(index_area_filtered_data)
     index_data_standard = np.std(index_area_filtered_data)
@@ -112,6 +120,7 @@ def index_channel(image):
     histogram_ax.plot([], [], ' ', label=f'Median: {index_data_median:.3f}')
     histogram_ax.plot([], [], ' ', label=f'Mean: {index_data_mean:.3f}')
     histogram_ax.plot([], [], ' ', label=f'Std Dev: {index_data_standard:.3f}')
+    histogram_ax.plot([], [], ' ', label=f'Forest area: {forest_area_km2} $km^2$')
     if len(index_area_anomalies) != 0:
         histogram_ax.hist(index_area_anomalies, label='Anomalies', alpha=0.7, histtype='stepfilled', bins=bins,
                           color='Red')
@@ -138,7 +147,7 @@ def index_channel(image):
 
 
 def main():
-    image = read_tif('../00_src/01_sentinel2/03_aoi/R20m/20180703T073611.tif')
+    image = read_tif('../00_src/01_sentinel2/03_aoi/R20m/20220816T073619.tif')
     index_channel(image)
 
 

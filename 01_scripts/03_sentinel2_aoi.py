@@ -22,6 +22,7 @@ def merge_parts(path_1: str, path_2: str) -> rasterio.io.DatasetReader:
     with MemoryFile() as memory_raster:
         with memory_raster.open(**out_meta) as memory_dataset:
             memory_dataset.write(mosaic)
+            memory_dataset.close() # new
         return memory_raster.open()
 
 
@@ -40,6 +41,7 @@ def crop_raster(image: rasterio.io.DatasetReader, geojson_path: str) -> rasterio
     with MemoryFile() as memory_raster:
         with memory_raster.open(**out_meta) as memory_dataset:
             memory_dataset.write(cropped_image)
+            memory_dataset.close() # new
         return memory_raster.open()
 
 

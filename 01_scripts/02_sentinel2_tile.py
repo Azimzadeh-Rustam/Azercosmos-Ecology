@@ -3,8 +3,7 @@ import numpy as np
 from skimage.transform import resize
 import torch
 import RRDBNet_arch as arch
-from rasterio.transform import Affine
-
+from rasterio.crs import CRS
 
 PATCH_SIZE = 256
 DEVICE = torch.device('cuda')
@@ -39,17 +38,6 @@ def load_esrgan_model() -> torch.nn.Module:
     return model.to(DEVICE)
 
 
-def pad_to_multiple(image: np.ndarray, patch_size: int) -> np.ndarray:
-    height, width = image.shape[1], image.shape[2]
-
-    pad_height = (patch_size - height % patch_size) % patch_size
-    pad_width = (patch_size - width % patch_size) % patch_size
-
-    paddings = [(0, 0), (0, pad_height), (0, pad_width)]
-
-    return np.pad(image, paddings, mode='constant', constant_values=np.nan)
-
-
 def increase_spatial_resolution(image: np.ndarray, model: torch.nn.Module) -> np.ndarray:
     num_channels, initial_height, initial_width = image.shape
 
@@ -58,11 +46,12 @@ def increase_spatial_resolution(image: np.ndarray, model: torch.nn.Module) -> np
     scaled_width = initial_width * scale_factor
     scaled_image = np.zeros((num_channels, scaled_height, scaled_width), dtype=np.float32)
 
-    for channel_index in range(2, num_channels):
-        if channel_index == 2:
+    for flag in range(2, num_channels):
+        if flag == 2:
             rgb_indices = [2, 1, 0]
             true_color_composite = image[rgb_indices, ...]
         else:
+            channel_index = flag
             channel = image[channel_index]
             zeros_channel = np.zeros_like(channel)
             true_color_composite = np.stack([channel, zeros_channel, zeros_channel], axis=0)
@@ -73,13 +62,25 @@ def increase_spatial_resolution(image: np.ndarray, model: torch.nn.Module) -> np
         with torch.no_grad():
             high_resolution_output = model(low_resolution_input).data.squeeze().float().cpu().clamp_(0, 1).numpy()
 
-        if channel_index == 2:
+        if flag == 2:
             bgr_indices = [2, 1, 0]
             scaled_image[:3, ...] = high_resolution_output[bgr_indices, ...]
         else:
+            channel_index = flag
             scaled_image[channel_index] = high_resolution_output[0]
 
     return scaled_image
+
+
+def pad_to_multiple(image: np.ndarray, patch_size: int) -> np.ndarray:
+    height, width = image.shape[1], image.shape[2]
+
+    pad_height = (patch_size - height % patch_size) % patch_size
+    pad_width = (patch_size - width % patch_size) % patch_size
+
+    paddings = [(0, 0), (0, pad_height), (0, pad_width)]
+
+    return np.pad(image, paddings, mode='constant', constant_values=np.nan)
 
 
 def increase_spatial_resolution_by_patches(image: np.ndarray, model: torch.nn.Module, patch_size: int) -> np.ndarray:
@@ -93,11 +94,11 @@ def increase_spatial_resolution_by_patches(image: np.ndarray, model: torch.nn.Mo
     scaled_multiple_width = multiple_width * scale_factor
     scaled_multiple_image = np.zeros((num_channels, scaled_multiple_height, scaled_multiple_width), dtype=np.float32)
 
-    for channel_index in range(2, num_channels):
-        if channel_index == 2:
+    for flag in range(2, num_channels):
+        if flag == 2:
             true_color_composite = multiple_image[[2, 1, 0]]
         else:
-            channel = multiple_image[channel_index]
+            channel = multiple_image[flag]
             zeros_channel = np.zeros_like(channel)
             true_color_composite = np.stack([channel, zeros_channel, zeros_channel], axis=0)
 
@@ -117,10 +118,10 @@ def increase_spatial_resolution_by_patches(image: np.ndarray, model: torch.nn.Mo
                 scaled_start_x = start_x * scale_factor
                 scaled_end_y = scaled_start_y + patch_size * scale_factor
                 scaled_end_x = scaled_start_x + patch_size * scale_factor
-                if channel_index == 2:
+                if flag == 2:
                     scaled_multiple_image[:3, scaled_start_y:scaled_end_y, scaled_start_x:scaled_end_x] = scaled_patch[[2, 1, 0]]
                 else:
-                    scaled_multiple_image[channel_index, scaled_start_y:scaled_end_y, scaled_start_x:scaled_end_x] = scaled_patch[0]
+                    scaled_multiple_image[flag, scaled_start_y:scaled_end_y, scaled_start_x:scaled_end_x] = scaled_patch[0]
 
     scaled_height = initial_height * scale_factor
     scaled_width = initial_width * scale_factor
@@ -134,13 +135,19 @@ def get_metadata(path: str) -> dict:
 
 
 def save_raster(image: np.ndarray, meta: dict, output_path: str) -> None:
-    initial_height, initial_width = meta['height'], meta['width']
     num_channels, new_height, new_width = image.shape
 
-    x_scale = initial_width / new_width
-    y_scale = initial_height / new_height
+    scale_factor = 4
 
-    new_transform = meta['transform'] * Affine.scale(x_scale, y_scale)
+    original_transform = meta['transform']
+    new_transform = rasterio.Affine(
+        original_transform.a / scale_factor,
+        original_transform.b,
+        original_transform.c,
+        original_transform.d,
+        original_transform.e / scale_factor,
+        original_transform.f
+    )
 
     meta.update({
         'driver': 'GTiff',
@@ -148,9 +155,9 @@ def save_raster(image: np.ndarray, meta: dict, output_path: str) -> None:
         'height': new_height,
         'width': new_width,
         'dtype': str(image.dtype),
-        'crs': rasterio.crs.CRS.from_epsg(32639),
+        'crs': CRS.from_epsg(32639),
         'transform': new_transform,
-        "compress": "lzw"
+        'compress': 'lzw'
     })
 
     with rasterio.open(output_path, 'w', **meta) as output_raster:
@@ -158,7 +165,7 @@ def save_raster(image: np.ndarray, meta: dict, output_path: str) -> None:
 
 
 def main():
-    band_paths = [
+    BAND_PATHS = [
         '../00_src/01_sentinel2/01_raw_data/2017/S2A_MSIL2A_20170728T073611_N0500_R092_T39TUG_20231007T092611.SAFE/GRANULE/L2A_T39TUG_A010957_20170728T074308/IMG_DATA/R20m/T39TUG_20170728T073611_B02_20m.jp2', # Blue
         '../00_src/01_sentinel2/01_raw_data/2017/S2A_MSIL2A_20170728T073611_N0500_R092_T39TUG_20231007T092611.SAFE/GRANULE/L2A_T39TUG_A010957_20170728T074308/IMG_DATA/R20m/T39TUG_20170728T073611_B03_20m.jp2', # Green
         '../00_src/01_sentinel2/01_raw_data/2017/S2A_MSIL2A_20170728T073611_N0500_R092_T39TUG_20231007T092611.SAFE/GRANULE/L2A_T39TUG_A010957_20170728T074308/IMG_DATA/R20m/T39TUG_20170728T073611_B04_20m.jp2', # Red
@@ -167,19 +174,19 @@ def main():
         '../00_src/01_sentinel2/01_raw_data/2017/S2A_MSIL2A_20170728T073611_N0500_R092_T39TUG_20231007T092611.SAFE/GRANULE/L2A_T39TUG_A010957_20170728T074308/IMG_DATA/R20m/T39TUG_20170728T073611_B8A_20m.jp2', # Red Edge 2
         '../00_src/01_sentinel2/01_raw_data/2017/S2A_MSIL2A_20170728T073611_N0500_R092_T39TUG_20231007T092611.SAFE/GRANULE/L2A_T39TUG_A010957_20170728T074308/IMG_DATA/R20m/T39TUG_20170728T073611_B11_20m.jp2' # SWIR 1
     ]
-    output_path = '../00_src/01_sentinel2/02_tiles/R20m/2017/T39TUG_20170728T073611.tif'
+    OUTPUT_PATH = '../00_src/01_sentinel2/02_tiles/R20m/2017/T39TUG_20170728T073611.tif'
+    ESRGAN_MODEL = load_esrgan_model()
 
-    bands = [read_raster(band_path) for band_path in band_paths]
+    bands = [read_raster(band_path) for band_path in BAND_PATHS]
     bands = unify_bands(bands)
     image = np.stack(bands, axis=0)
-    image = min_max_normalization(image, band_min_value=0.0, band_max_value=65535.0) # 16 bit
+    normalized_image = min_max_normalization(image, band_min_value=0.0, band_max_value=65535.0) # 16 bit
 
-    esrgan_model = load_esrgan_model()
-    image = increase_spatial_resolution(image=image, model=esrgan_model)
-    #image = increase_spatial_resolution_by_patches(image=image, model=esrgan_model, patch_size=PATCH_SIZE)
+    scaled_image = increase_spatial_resolution(image=normalized_image, model=ESRGAN_MODEL)
+    #scaled_image = increase_spatial_resolution_by_patches(image=normalized_image, model=ESRGAN_MODEL, patch_size=PATCH_SIZE)
 
-    meta_data = get_metadata(band_paths[0])
-    save_raster(image, meta=meta_data, output_path=output_path)
+    meta_data = get_metadata(BAND_PATHS[0])
+    save_raster(scaled_image, meta=meta_data, output_path=OUTPUT_PATH)
 
 
 if __name__ == '__main__':
