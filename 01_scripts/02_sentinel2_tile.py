@@ -48,8 +48,7 @@ def increase_spatial_resolution(image: np.ndarray, model: torch.nn.Module) -> np
 
     for flag in range(2, num_channels):
         if flag == 2:
-            rgb_indices = [2, 1, 0]
-            true_color_composite = image[rgb_indices, ...]
+            true_color_composite = image[:3, ...]
         else:
             channel_index = flag
             channel = image[channel_index]
@@ -63,8 +62,7 @@ def increase_spatial_resolution(image: np.ndarray, model: torch.nn.Module) -> np
             high_resolution_output = model(low_resolution_input).data.squeeze().float().cpu().clamp_(0, 1).numpy()
 
         if flag == 2:
-            bgr_indices = [2, 1, 0]
-            scaled_image[:3, ...] = high_resolution_output[bgr_indices, ...]
+            scaled_image[:3, ...] = high_resolution_output
         else:
             channel_index = flag
             scaled_image[channel_index] = high_resolution_output[0]
@@ -80,7 +78,7 @@ def pad_to_multiple(image: np.ndarray, patch_size: int) -> np.ndarray:
 
     paddings = [(0, 0), (0, pad_height), (0, pad_width)]
 
-    return np.pad(image, paddings, mode='constant', constant_values=np.nan)
+    return np.pad(image, paddings, mode='constant', constant_values=0)
 
 
 def increase_spatial_resolution_by_patches(image: np.ndarray, model: torch.nn.Module, patch_size: int) -> np.ndarray:
@@ -96,32 +94,39 @@ def increase_spatial_resolution_by_patches(image: np.ndarray, model: torch.nn.Mo
 
     for flag in range(2, num_channels):
         if flag == 2:
-            true_color_composite = multiple_image[[2, 1, 0]]
+            true_color_composite = multiple_image[:3, ...]
         else:
-            channel = multiple_image[flag]
+            channel_index = flag
+            channel = multiple_image[channel_index]
             zeros_channel = np.zeros_like(channel)
             true_color_composite = np.stack([channel, zeros_channel, zeros_channel], axis=0)
 
+        patch_number = 1  # Only for logging
         for start_y in range(0, multiple_height, patch_size):
             for start_x in range(0, multiple_width, patch_size):
+                print(f'Flag {flag} - Patch {patch_number} is processing')
                 end_y = start_y + patch_size
                 end_x = start_x + patch_size
                 patch = true_color_composite[:, start_y:end_y, start_x:end_x]
+                print(f'\tLow resolution input patch shape: {patch.shape}')
 
-                patch_input = torch.from_numpy(patch).to(dtype=torch.float32)
-                patch_input = patch_input.unsqueeze(0)
+                patch_tensor = torch.from_numpy(patch).to(dtype=torch.float32)
+                patch_input = patch_tensor.unsqueeze(0)
                 patch_input = patch_input.to(DEVICE)
                 with torch.no_grad():
                     scaled_patch = model(patch_input).data.squeeze().float().cpu().clamp_(0, 1).numpy()
-
+                print(f'\tHigh resolution output patch shape: {scaled_patch.shape}')
                 scaled_start_y = start_y * scale_factor
                 scaled_start_x = start_x * scale_factor
                 scaled_end_y = scaled_start_y + patch_size * scale_factor
                 scaled_end_x = scaled_start_x + patch_size * scale_factor
                 if flag == 2:
-                    scaled_multiple_image[:3, scaled_start_y:scaled_end_y, scaled_start_x:scaled_end_x] = scaled_patch[[2, 1, 0]]
+                    scaled_multiple_image[:3, scaled_start_y:scaled_end_y, scaled_start_x:scaled_end_x] = scaled_patch
                 else:
-                    scaled_multiple_image[flag, scaled_start_y:scaled_end_y, scaled_start_x:scaled_end_x] = scaled_patch[0]
+                    channel_index = flag
+                    scaled_multiple_image[channel_index, scaled_start_y:scaled_end_y, scaled_start_x:scaled_end_x] = scaled_patch[0]
+
+                patch_number += 1  # Only for logging
 
     scaled_height = initial_height * scale_factor
     scaled_width = initial_width * scale_factor
@@ -157,6 +162,7 @@ def save_raster(image: np.ndarray, meta: dict, output_path: str) -> None:
         'dtype': str(image.dtype),
         'crs': CRS.from_epsg(32639),
         'transform': new_transform,
+        'BIGTIFF': 'YES',
         'compress': 'lzw'
     })
 
@@ -166,24 +172,25 @@ def save_raster(image: np.ndarray, meta: dict, output_path: str) -> None:
 
 def main():
     BAND_PATHS = [
-        '../00_src/01_sentinel2/01_raw_data/2017/S2A_MSIL2A_20170728T073611_N0500_R092_T39TUG_20231007T092611.SAFE/GRANULE/L2A_T39TUG_A010957_20170728T074308/IMG_DATA/R20m/T39TUG_20170728T073611_B02_20m.jp2', # Blue
-        '../00_src/01_sentinel2/01_raw_data/2017/S2A_MSIL2A_20170728T073611_N0500_R092_T39TUG_20231007T092611.SAFE/GRANULE/L2A_T39TUG_A010957_20170728T074308/IMG_DATA/R20m/T39TUG_20170728T073611_B03_20m.jp2', # Green
-        '../00_src/01_sentinel2/01_raw_data/2017/S2A_MSIL2A_20170728T073611_N0500_R092_T39TUG_20231007T092611.SAFE/GRANULE/L2A_T39TUG_A010957_20170728T074308/IMG_DATA/R20m/T39TUG_20170728T073611_B04_20m.jp2', # Red
-        '../00_src/01_sentinel2/01_raw_data/2017/S2A_MSIL2A_20170728T073611_N0500_R092_T39TUG_20231007T092611.SAFE/GRANULE/L2A_T39TUG_A010957_20170728T074308/IMG_DATA/R20m/T39TUG_20170728T073611_B05_20m.jp2', # Red Edge 1
-        '../00_src/01_sentinel2/01_raw_data/2017/S2A_MSIL2A_20170728T073611_N0500_R092_T39TUG_20231007T092611.SAFE/GRANULE/L2A_T39TUG_A010957_20170728T074308/IMG_DATA/R10m/T39TUG_20170728T073611_B08_10m.jp2', # NIR
-        '../00_src/01_sentinel2/01_raw_data/2017/S2A_MSIL2A_20170728T073611_N0500_R092_T39TUG_20231007T092611.SAFE/GRANULE/L2A_T39TUG_A010957_20170728T074308/IMG_DATA/R20m/T39TUG_20170728T073611_B8A_20m.jp2', # Red Edge 2
-        '../00_src/01_sentinel2/01_raw_data/2017/S2A_MSIL2A_20170728T073611_N0500_R092_T39TUG_20231007T092611.SAFE/GRANULE/L2A_T39TUG_A010957_20170728T074308/IMG_DATA/R20m/T39TUG_20170728T073611_B11_20m.jp2' # SWIR 1
+        '../00_src/01_sentinel2/01_raw_data_processed/2017/T39TTG_20170728T073611/B02.jp2', # Blue
+        '../00_src/01_sentinel2/01_raw_data_processed/2017/T39TTG_20170728T073611/B03.jp2', # Green
+        '../00_src/01_sentinel2/01_raw_data_processed/2017/T39TTG_20170728T073611/B04.jp2', # Red
+        '../00_src/01_sentinel2/01_raw_data_processed/2017/T39TTG_20170728T073611/B05.jp2', # Red Edge 1
+        '../00_src/01_sentinel2/01_raw_data_processed/2017/T39TTG_20170728T073611/B08.jp2', # NIR
+        '../00_src/01_sentinel2/01_raw_data_processed/2017/T39TTG_20170728T073611/B8A.jp2', # Red Edge 2
+        '../00_src/01_sentinel2/01_raw_data_processed/2017/T39TTG_20170728T073611/B11.jp2' # SWIR 1
     ]
-    OUTPUT_PATH = '../00_src/01_sentinel2/02_tiles/R20m/2017/T39TUG_20170728T073611.tif'
+    OUTPUT_PATH = '../00_src/01_sentinel2/02_tiles/R5m/2017/T39TTG_20170728T073611_all_same.tif'
     ESRGAN_MODEL = load_esrgan_model()
 
     bands = [read_raster(band_path) for band_path in BAND_PATHS]
     bands = unify_bands(bands)
     image = np.stack(bands, axis=0)
     normalized_image = min_max_normalization(image, band_min_value=0.0, band_max_value=65535.0) # 16 bit
+    print(f'Initial image shape {normalized_image.shape}')
 
-    scaled_image = increase_spatial_resolution(image=normalized_image, model=ESRGAN_MODEL)
-    #scaled_image = increase_spatial_resolution_by_patches(image=normalized_image, model=ESRGAN_MODEL, patch_size=PATCH_SIZE)
+    scaled_image = increase_spatial_resolution_by_patches(image=normalized_image, model=ESRGAN_MODEL, patch_size=PATCH_SIZE)
+    print(f'Scaled image shape: {scaled_image.shape}')
 
     meta_data = get_metadata(BAND_PATHS[0])
     save_raster(scaled_image, meta=meta_data, output_path=OUTPUT_PATH)

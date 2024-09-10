@@ -124,7 +124,7 @@ def channel_histograms(image):
 
 
 def main() -> None:
-    PATH = '../00_src/01_sentinel2/03_aoi/R20m/20240805T073619.tif'
+    PATH = '../00_src/01_sentinel2/03_full_area/20240805T073619.tif'
 
     image = read_raster(PATH)
     visualise_rgb(image)

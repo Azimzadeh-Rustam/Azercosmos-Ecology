@@ -56,8 +56,8 @@ def detect_outliers(data):
     return filtered_data, anomalies
 
 
-def index_channel(image):
-    THRESHOLD_LOW = 0.3
+def index_channel(image, save_path):
+    THRESHOLD_LOW = 0.4
     THRESHOLD_HIGH = 1.0
 
     blue_channel = image[0]
@@ -68,19 +68,21 @@ def index_channel(image):
     red_edge2_channel = image[5]
     swir1_channel = image[6]
 
-    background = nir_channel
+    background = red_edge1_channel
 
-    index_channel = (nir_channel - red_channel) / (nir_channel + red_channel + 1e-10)
-    area_mask = np.where((index_channel > THRESHOLD_LOW) & (index_channel < THRESHOLD_HIGH), True, False)
+    ndvi_channel = (nir_channel - red_channel) / (nir_channel + red_channel + 1e-10)
+    forests_mask = np.where((ndvi_channel > THRESHOLD_LOW) & (ndvi_channel < THRESHOLD_HIGH), True, False)
+
+    gndvi_channel = (nir_channel - green_channel) / (nir_channel + green_channel + 1e-10)
 
     # Calculate forest area
-    spatial_resolution = 20
-    pixel_area_m2 = spatial_resolution ** 2
-    forest_pixel_count = np.nansum(area_mask)
-    forest_area_m2 = forest_pixel_count * pixel_area_m2
-    forest_area_km2 = int(forest_area_m2 / 1e6)
+    #spatial_resolution = 20
+    #pixel_area_m2 = spatial_resolution ** 2
+    #forest_pixel_count = np.nansum(forests_mask)
+    #forest_area_m2 = forest_pixel_count * pixel_area_m2
+    #forest_area_km2 = int(forest_area_m2 / 1e6)
 
-    area_map = np.where(area_mask, index_channel, np.nan)
+    area_map = np.where(forests_mask, gndvi_channel, np.nan)
 
     figure = plt.figure(figsize=(15, 8))
     gs = gridspec.GridSpec(nrows=2, ncols=2)
@@ -89,16 +91,16 @@ def index_channel(image):
     # ================== COLOR MAP ==================
     area_color_map_ax = figure.add_subplot(gs[0:2, 0:1])
     area_color_map_ax.imshow(background, cmap='Grays')
-    color_map = area_color_map_ax.imshow(area_map, cmap='RdYlGn', vmin=-1, vmax=1)
-    plt.colorbar(color_map, ax=area_color_map_ax, label=r'$NDVI = \frac{NIR - Red}{NIR + Red}$',
+    color_map = area_color_map_ax.imshow(area_map, cmap='YlGn', vmin=-1, vmax=1) #
+    plt.colorbar(color_map, ax=area_color_map_ax, label=r'$GNDVI = \frac{NIR - Green}{NIR + Green}$',
                  orientation='horizontal', shrink=.75)
-    area_color_map_ax.set_title('NDVI color map for assessing forest health')
+    area_color_map_ax.set_title('Green Normalized Difference Vegetation Index (GNDVI) color map')
     area_color_map_ax.axis('off')
 
     # ================== HISTOGRAM ==================
     histogram_ax = figure.add_subplot(gs[0:1, 1:2])
 
-    index_area_pattern = index_channel[area_mask]
+    index_area_pattern = gndvi_channel[forests_mask]
     index_area_data = index_area_pattern.ravel()
     index_area_filtered_data, index_area_anomalies = detect_outliers(index_area_data)
     index_data_mean = np.mean(index_area_filtered_data)
@@ -107,7 +109,7 @@ def index_channel(image):
 
     bins = np.histogram_bin_edges(index_area_data, bins='scott')
 
-    histogram_ax.set_title('Forest health histogram and boxplot')
+    histogram_ax.set_title('Histogram and Boxplot of Forests Biomass')
     histogram_ax.set_ylabel('Frequency', fontsize=FONT_SIZE)
     histogram_ax.xaxis.set_major_formatter(MY_FORMATTER)
     histogram_ax.yaxis.set_major_formatter(MY_FORMATTER)
@@ -120,7 +122,7 @@ def index_channel(image):
     histogram_ax.plot([], [], ' ', label=f'Median: {index_data_median:.3f}')
     histogram_ax.plot([], [], ' ', label=f'Mean: {index_data_mean:.3f}')
     histogram_ax.plot([], [], ' ', label=f'Std Dev: {index_data_standard:.3f}')
-    histogram_ax.plot([], [], ' ', label=f'Forest area: {forest_area_km2} $km^2$')
+    #histogram_ax.plot([], [], ' ', label=f'Forest area: {forest_area_km2} $km^2$')
     if len(index_area_anomalies) != 0:
         histogram_ax.hist(index_area_anomalies, label='Anomalies', alpha=0.7, histtype='stepfilled', bins=bins,
                           color='Red')
@@ -139,16 +141,18 @@ def index_channel(image):
         boxplot_ax.tick_params(top=True, right=False, bottom=True, left=False,
                                labeltop=False, labelright=False, labelbottom=True, labelleft=False,
                                axis='both', labelsize=FONT_SIZE)
-    boxplot_ax.set_xlabel('NDVI value', fontsize=FONT_SIZE)
+    boxplot_ax.set_xlabel('GNDVI value', fontsize=FONT_SIZE)
 
-    plt.show()
-    # plt.savefig(f'../03_results/02_forests/01_NDVI/2017_NDVI.png', dpi=300)
+    #plt.show()
+    plt.savefig(save_path, dpi=300)
     plt.close()
 
 
 def main():
-    image = read_tif('../00_src/01_sentinel2/03_aoi/R20m/20220816T073619.tif')
-    index_channel(image)
+    IMAGE_PATH = '../00_src/01_sentinel2/04_aoi/20240805T073619.tif'
+    OUTPUT_PATH = '../02_results/04_forests_indices/05_GNDVI/20240805T073619.png'
+    image = read_tif(IMAGE_PATH)
+    index_channel(image, OUTPUT_PATH)
 
 
 if __name__ == '__main__':

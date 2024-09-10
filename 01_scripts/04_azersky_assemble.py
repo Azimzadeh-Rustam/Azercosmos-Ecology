@@ -110,7 +110,7 @@ def main():
     GEOJSON_PATH = '../00_src/AOI.geojson'
 
     image = merge_parts(PATHS)
-    rescaled_image = rescale_image(image, current_resolution=1.5, target_resolution=5.0)
+    rescaled_image = rescale_image(image, current_resolution=1.5, target_resolution=20.0)
     cropped_area = crop_raster(rescaled_image, GEOJSON_PATH)
     image = atmospheric_correction(image)
     image = min_max_normalization(image, band_min_value=0.0, band_max_value=4095.0)

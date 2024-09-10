@@ -3,20 +3,23 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-from sklearn.ensemble import IsolationForest
+from sklearn.cluster import DBSCAN
+from sklearn.preprocessing import MinMaxScaler
 
 FONT_SIZE = 12
 
 
-def detect_outliers(data):
-    isolation_forest = IsolationForest(n_estimators=100, contamination=0.1, max_samples='auto', random_state=42)
-    isolation_forest.fit(data)
-    predictions = isolation_forest.predict(data)
+def detect_outliers(data, eps=0.5, min_samples=2):
+    scaler = MinMaxScaler()
+    data_scaled = scaler.fit_transform(data)
+    model = DBSCAN(eps=eps, min_samples=min_samples)
+    model.fit(data_scaled)
 
-    filtered_data = data[predictions == 1]
-    outliers = data[predictions == -1]
+    labels = model.labels_
+    is_outlier = labels == -1
 
-    return filtered_data, outliers
+    filtered_data = data[~is_outlier]
+    return filtered_data
 
 
 def main():
@@ -25,10 +28,10 @@ def main():
     data = pd.merge(forests_data, sea_data, on='dates')
     data.set_index('dates', inplace=True)
 
-    clean_data, _ = detect_outliers(data)
+    data_filtered = detect_outliers(data)
 
-    correlation_matrix = clean_data.corr(method='pearson')
-    mask = np.triu(np.ones_like(correlation_matrix))
+    correlation_matrix = data_filtered.corr(method='pearson')
+    mask = np.triu(np.ones_like(correlation_matrix, dtype=bool))
 
     plt.figure(figsize=(11, 14))
     sns.heatmap(correlation_matrix, annot=True, linewidths=0.5, mask=mask, fmt=".3f", cmap='coolwarm', vmin=-1, vmax=1,

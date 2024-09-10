@@ -2,13 +2,12 @@ import pandas as pd
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
+from sklearn.preprocessing import MinMaxScaler
 from statsmodels.sandbox.regression.predstd import wls_prediction_std
-from kneed import KneeLocator
-from sklearn.neighbors import NearestNeighbors
 import numpy as np
 
 
-def detect_outliers(data, independent, dependent, eps=10, min_samples=2):
+def detect_outliers(data, independent, dependent, eps=0.5, min_samples=2):
     considered_features = data[[independent, dependent]]
     features = considered_features.values
 
@@ -75,11 +74,14 @@ def main():
     data = pd.merge(forests_data, sea_data, on='dates')
     data.set_index('dates', inplace=True)
 
-    features = data.columns
+    scaler = MinMaxScaler()
+    data_scaled = pd.DataFrame(scaler.fit_transform(data), index=data.index, columns=data.columns)
+
+    features = data_scaled.columns
     for dependent in features:
         for independent in features:
             if dependent != independent:
-                clean_data, anomalies = detect_outliers(data, independent, dependent)
+                clean_data, anomalies = detect_outliers(data_scaled, independent, dependent)
                 model, X, y = build_linear_regression(clean_data, independent, dependent)
                 plot_regression(X, y, model, independent, dependent, anomalies)
 

@@ -36,44 +36,6 @@ def load_esrgan_model() -> torch.nn.Module:
     return model.eval()
 
 
-def increase_spatial_resolution(image: np.ndarray, model: torch.nn.Module) -> np.ndarray:
-    num_channels, initial_height, initial_width = image.shape
-
-    scale_factor = 4
-    scaled_height = initial_height * scale_factor
-    scaled_width = initial_width * scale_factor
-    scaled_image = np.zeros((num_channels, scaled_height, scaled_width), dtype=np.float32)
-
-    for flag in range(2, num_channels):
-        if flag == 2:
-            rgb_indices = [2, 1, 0]
-            true_color_composite = image[rgb_indices, ...]
-            print(f"Flag {flag} composite is ready")
-        else:
-            channel_index = flag
-            channel = image[channel_index]
-            zeros_channel = np.zeros_like(channel)
-            true_color_composite = np.stack([channel, zeros_channel, zeros_channel], axis=0)
-            print(f"Flag {flag} composite is ready")
-
-        true_color_tensor = torch.from_numpy(true_color_composite).to(dtype=torch.float32, device='cpu')
-        low_resolution_input = true_color_tensor.unsqueeze(0)
-        print("Prepared low resolution input")
-        with torch.no_grad():
-            high_resolution_output = model(low_resolution_input).data.squeeze().float().cpu().clamp_(0, 1).numpy()
-        print("Hight resolution output is ready")
-        if flag == 2:
-            bgr_indices = [2, 1, 0]
-            scaled_image[:3, ...] = high_resolution_output[bgr_indices, ...]
-        else:
-            channel_index = flag
-            scaled_image[channel_index] = high_resolution_output[0]
-
-        print(f"Flag {flag} finished")
-
-    return scaled_image
-
-
 def pad_to_multiple(image: np.ndarray, patch_size: int) -> np.ndarray:
     height, width = image.shape[1], image.shape[2]
 
@@ -85,7 +47,7 @@ def pad_to_multiple(image: np.ndarray, patch_size: int) -> np.ndarray:
     return np.pad(image, paddings, mode='constant', constant_values=np.nan)
 
 
-def increase_spatial_resolution_by_patches(image: np.ndarray, model: torch.nn.Module, patch_size: int) -> np.ndarray:
+def increase_spatial_resolution(image: np.ndarray, model: torch.nn.Module, patch_size: int) -> np.ndarray:
     num_channels, initial_height, initial_width = image.shape
 
     multiple_image = pad_to_multiple(image, patch_size)
@@ -99,11 +61,11 @@ def increase_spatial_resolution_by_patches(image: np.ndarray, model: torch.nn.Mo
     for flag in range(2, num_channels):
         if flag == 2:
             rgb_indices = [2, 1, 0]
-            true_color_composite = image[rgb_indices, ...]
+            true_color_composite = multiple_image[rgb_indices, ...]
             print(f"Flag {flag} composite is ready")
         else:
             channel_index = flag
-            channel = image[channel_index]
+            channel = multiple_image[channel_index]
             zeros_channel = np.zeros_like(channel)
             true_color_composite = np.stack([channel, zeros_channel, zeros_channel], axis=0)
             print(f"Flag {flag} composite is ready")
@@ -127,7 +89,7 @@ def increase_spatial_resolution_by_patches(image: np.ndarray, model: torch.nn.Mo
                 scaled_end_x = scaled_start_x + patch_size * scale_factor
                 if flag == 2:
                     bgr_indices = [2, 1, 0]
-                    scaled_multiple_image[:3, scaled_start_y:scaled_end_y, scaled_start_x:scaled_end_x] = high_resolution_output[bgr_indices]
+                    scaled_multiple_image[:3, scaled_start_y:scaled_end_y, scaled_start_x:scaled_end_x] = high_resolution_output[bgr_indices, ...]
                 else:
                     channel_index = flag
                     scaled_multiple_image[channel_index, scaled_start_y:scaled_end_y, scaled_start_x:scaled_end_x] = high_resolution_output[0]
@@ -166,6 +128,7 @@ def save_raster(image: np.ndarray, meta: dict, output_path: str) -> None:
         'dtype': str(image.dtype),
         'crs': CRS.from_epsg(32639),
         'transform': new_transform,
+        'BIGTIFF': 'YES',
         'compress': 'lzw'
     })
 
@@ -195,7 +158,7 @@ def main():
     normalized_image = min_max_normalization(image, band_min_value=0.0, band_max_value=65535.0)  # 16 bit
     print("Bands normalized")
 
-    scaled_image = increase_spatial_resolution_by_patches(image=normalized_image, model=ESRGAN_MODEL, patch_size=PATCH_SIZE)
+    scaled_image = increase_spatial_resolution(image=normalized_image, model=ESRGAN_MODEL, patch_size=PATCH_SIZE)
     print("Image scaled")
 
     meta_data = get_metadata(BAND_PATHS[0])

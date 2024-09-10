@@ -51,10 +51,10 @@ def save_raster(image: rasterio.io.DatasetReader, output_path: str):
 
 
 def main():
-    right_part_path = '../00_src/01_sentinel2/02_tiles/R20m/2017/T39TTG_20170728T073611.tif'
-    left_part_path = '../00_src/01_sentinel2/02_tiles/R20m/2017/T39TUG_20170728T073611.tif'
+    right_part_path = '../00_src/01_sentinel2/02_tiles/2024/T39TTG_20240805T073619.tif'
+    left_part_path = '../00_src/01_sentinel2/02_tiles/2024/T39TUG_20240805T073619.tif'
     geojson_path = '../00_src/AOI.geojson'
-    output_path = '../00_src/01_sentinel2/03_aoi/R20m/2017/20170728T073611.tif'
+    output_path = '../00_src/01_sentinel2/03_full_area/20240805T073619.tif'
 
     full_area = merge_parts(left_part_path, right_part_path)
     cropped_area = crop_raster(full_area, geojson_path)

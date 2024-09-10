@@ -1,4 +1,4 @@
-import random
+import os
 import numpy as np
 import rasterio
 from matplotlib import pyplot as plt
@@ -18,6 +18,13 @@ MY_FORMATTER = ScalarFormatter(useMathText=True)
 MY_FORMATTER.set_scientific(True)
 MY_FORMATTER.set_powerlimits((-2, 2))
 
+colors = np.array([
+        #R  G  B
+        [0, 0, 0],   # Background - Black
+        [0, 255, 0], # Forests - Green
+        [0, 0, 255]  # Sea - Blue
+    ])
+
 
 def set_plot_style():
     plt.style.use(['science', 'notebook', 'grid'])
@@ -34,6 +41,17 @@ def read_raster(path: str) -> np.ndarray:
     with rasterio.open(path) as raster:
         array = raster.read()
         return array.transpose((1, 2, 0)) # (height, width, num_channels)
+
+
+def get_all_tiff(folder_path: str) -> np.ndarray:
+    images = list()
+    for filename in os.listdir(folder_path):
+        if filename.endswith('.tif'):
+            file_path = os.path.join(folder_path, filename)
+            image = read_raster(file_path)
+            images.append(image)
+
+    return np.stack(images, axis=0)
 
 
 def pad_to_multiple(image: np.ndarray, patch_size: int) -> np.ndarray:
@@ -94,15 +112,14 @@ def one_hot_encoding(image: np.ndarray) -> np.ndarray:
     return one_hot_label
 
 
-def calculate_class_weights(label: np.array) -> dict:
-    mask = np.argmax(label, axis=-1)
+def calculate_class_weights(mask: np.array) -> dict:
     class_pixel_counts = np.bincount(mask.flatten())
     num_classes = len(class_pixel_counts)
     total_pixels = mask.size
     return {i: total_pixels / (num_classes * np.maximum(class_pixel_counts[i], 1)) for i in range(num_classes)}
 
 
-def jaccard_index(y_true: bk.Tensor, y_prediction: bk.Tensor) -> bk.Tensor:
+def jaccard_index(y_true: tf.Tensor, y_prediction: tf.Tensor) -> tf.Tensor:
     y_true_flatten = bk.flatten(y_true)
     y_prediction_flatten = bk.flatten(y_prediction)
     intersection = bk.sum(y_true_flatten * y_prediction_flatten)
@@ -179,29 +196,82 @@ def normalize_with_clipping(image: np.ndarray) -> np.ndarray:
     return min_max_normalization(clipped_image, p_low, p_high)
 
 
-def visualize_patches(model: Model, images: np.ndarray, labels: np.ndarray, number: int) -> None:
-    num_images = images.shape[0]
+def full_predict(model: Model, image: np.ndarray) -> np.ndarray:
+    initial_height, initial_width, _ = image.shape
 
-    colors = np.array([
-        #R  G  B
-        [0, 0, 0],   # Background - Black
-        [0, 255, 0], # Forests - Green
-        [0, 0, 255]  # Sea - Blue
-    ])
+    multiple_image = pad_to_multiple(image=image, patch_size=PATCH_SIZE)
+    multiple_height, multiple_width, _ = multiple_image.shape
+
+    input_image = multiple_image[..., :3]
+    input_image = np.nan_to_num(input_image, nan=-1)
+
+    prediction = np.zeros((multiple_height, multiple_width), dtype=np.uint8)
+
+    for start_y in range(0, multiple_height, PATCH_SIZE):
+        for start_x in range(0, multiple_width, PATCH_SIZE):
+            end_y = start_y + PATCH_SIZE
+            end_x = start_x + PATCH_SIZE
+
+            input_patch = input_image[start_y:end_y, start_x:end_x, :]
+            predicted_patch_label = model.predict(np.expand_dims(input_patch, axis=0))
+            predicted_patch = np.argmax(predicted_patch_label.squeeze(), axis=-1)
+
+            prediction[start_y:end_y, start_x:end_x] = predicted_patch
+
+    return prediction[:initial_height, :initial_width]
+
+
+def compare_full_prediction(model: Model, image: np.ndarray) -> None:
+    rgb_indices = [2, 1, 0]
+    true_color_composite = image[..., rgb_indices]
+    normalized_image = normalize_with_clipping(true_color_composite)
+
+    label = one_hot_encoding(image)
+    mask = np.argmax(label, axis=-1)
+    mask_map = colors[mask]
+
+    prediction = full_predict(model=model, image=image)
+    prediction_map = colors[prediction]
+
+    figure, axes = plt.subplots(nrows=1, ncols=3, figsize=(18, 5))
+
+    axis1 = axes[0]
+    axis1.imshow(normalized_image, vmin=0, vmax=1)
+    axis1.set_title("Satellite Image")
+    axis1.axis('off')
+
+    axis2 = axes[1]
+    axis2.imshow(mask_map, vmin=0, vmax=255)
+    axis2.set_title("True Mask")
+    axis2.axis('off')
+
+    axis3 = axes[2]
+    axis3.imshow(prediction_map, vmin=0, vmax=255)
+    axis3.set_title("NN Prediction")
+    axis3.axis('off')
+
+    plt.savefig(f'../02_results/03_neural_networks/02_forests_sea_segmentation/02_performance_plots/full_prediction.png', dpi=300)
+    plt.close()
+
+
+def compare_patches_predictions(model: Model, images: np.ndarray, labels: np.ndarray, number: int) -> None:
+    num_images = images.shape[0]
 
     for i in range(number):
         figure, axes = plt.subplots(nrows=1, ncols=3, figsize=(18, 5))
 
-        random_id = random.randint(0, num_images - 1)
+        random_id = np.random.randint(0, num_images - 1)
 
-        image = images[random_id, :, :, :3]
-        normalized_image = normalize_with_clipping(image)
+        image = images[random_id, ...]
+        rgb_indices = [2, 1, 0]
+        true_color_composite = image[..., rgb_indices]
+        normalized_image = normalize_with_clipping(true_color_composite)
         axis1 = axes[0]
         axis1.imshow(normalized_image, vmin=0, vmax=1)
         axis1.set_title("Satellite Image")
         axis1.axis('off')
 
-        label = labels[random_id, ...]
+        label = labels[random_id]
         mask = np.argmax(label, axis=-1)
         mask_map = colors[mask]
         axis2 = axes[1]
@@ -209,15 +279,15 @@ def visualize_patches(model: Model, images: np.ndarray, labels: np.ndarray, numb
         axis2.set_title("True Mask")
         axis2.axis('off')
 
-        prediction = model.predict(np.expand_dims(image, axis=0))
-        prediction = np.argmax(prediction.squeeze(), axis=-1)
+        prediction_label = model.predict(np.expand_dims(image, axis=0))
+        prediction = np.argmax(prediction_label.squeeze(), axis=-1)
         prediction_map = colors[prediction]
         axis3 = axes[2]
         axis3.imshow(prediction_map, vmin=0, vmax=255)
         axis3.set_title("NN Prediction")
         axis3.axis('off')
 
-        plt.savefig(f'../02_results/01_neural_networks/02_forests_sea_segmentation/02_performance_plots/compare_{i}', dpi=300)
+        plt.savefig(f'../02_results/03_neural_networks/02_forests_sea_segmentation/02_performance_plots/compare_{i}', dpi=300)
         plt.close()
 
 
@@ -246,41 +316,56 @@ def plot_history(history) -> None:
     axis2.tick_params(axis='both', labelsize=FONT_SIZE)
     axis2.plot(history.history['jaccard_index'], label='Train IoU')
     axis2.plot(history.history['val_jaccard_index'], label='Validation IoU')
-    axis2.legend(loc='best', fontsize=10, fancybox=False, edgecolor='black')
+    axis2.legend(loc='best', fontsize=FONT_SIZE, fancybox=False, edgecolor='black')
 
-    plt.savefig(f'../02_results/01_neural_networks/02_forests_sea_segmentation/02_performance_plots/training_history.png', dpi=300)
+    plt.savefig(f'../02_results/03_neural_networks/02_forests_sea_segmentation/02_performance_plots/training_history.png', dpi=300)
     plt.close()
 
 
 def main() -> None:
-    image = read_raster('../00_src/01_sentinel2/03_aoi/R20m/20220816T073619.tif')
+    FILES_FOLDER_PATH = '../00_src/01_sentinel2/03_full_area'
+    AREA_OF_INTEREST_PATH = '../00_src/01_sentinel2/04_aoi/20230821T073619.tif'
 
-    multiple_image = pad_to_multiple(image, patch_size=PATCH_SIZE)
-    label = one_hot_encoding(multiple_image)
+    images = get_all_tiff(FILES_FOLDER_PATH)
 
-    class_weights = calculate_class_weights(label)
+    all_image_patches = list()
+    all_label_patches = list()
+    for image in images:
+        multiple_image = pad_to_multiple(image, patch_size=PATCH_SIZE)
+        label = one_hot_encoding(multiple_image)
 
-    input_image = np.nan_to_num(multiple_image[..., :3], nan=-1)
+        input_image = multiple_image[..., :3]
+        input_image = np.nan_to_num(input_image, nan=-1)
 
-    image_patches = split_into_patches(input_image, patch_size=PATCH_SIZE)
-    label_patches = split_into_patches(label, patch_size=PATCH_SIZE)
+        image_patches = split_into_patches(input_image, patch_size=PATCH_SIZE)
+        label_patches = split_into_patches(label, patch_size=PATCH_SIZE)
 
+        all_image_patches.append(image_patches)
+        all_label_patches.append(label_patches)
+    all_image_patches = np.concatenate(all_image_patches, axis=0)
+    all_label_patches = np.concatenate(all_label_patches, axis=0)
+
+    image_2023 = images[6]
+    label_2023 = one_hot_encoding(image_2023)
+    mask_2023 = np.argmax(label_2023, axis=-1)
+    class_weights = calculate_class_weights(mask_2023)
     total_classes = 3
 
-    input_train, input_test, output_train, output_test = train_test_split(image_patches, label_patches,
-                                                                          test_size=0.3, shuffle=True, random_state=42)
+    input_train, input_test, output_train, output_test = train_test_split(all_image_patches, all_label_patches,
+                                                                          test_size=0.3, shuffle=True)
 
     neural_network = multi_unet_model(patch_height=PATCH_SIZE, patch_width=PATCH_SIZE,
                                       num_input_channels=NUM_INPUT_CHANNELS, num_classes=total_classes)
     neural_network.compile(optimizer="adam", loss='categorical_crossentropy', metrics=["accuracy", jaccard_index])
-    callbacks = [EarlyStopping(monitor='val_loss', patience=50, restore_best_weights=True, verbose=1)]
-    training_history = neural_network.fit(input_train, output_train, class_weight=class_weights, epochs=150,
+    callbacks = [EarlyStopping(monitor='val_jaccard_index', mode='max', patience=15, restore_best_weights=True, verbose=1)]
+    training_history = neural_network.fit(input_train, output_train, class_weight=class_weights, epochs=100,
                                           batch_size=32, verbose=1, callbacks=callbacks, validation_split=0.2,
                                           shuffle=True)
-    neural_network.save('../02_results/01_neural_networks/02_forests_sea_segmentation/01_pre-trained_model/forests_sea_segmentation_R5m.h5',
-                        save_format='h5', custom_objects={'jaccard_index': jaccard_index}, include_optimizer=True)
+    neural_network.save('../02_results/03_neural_networks/02_forests_sea_segmentation/01_pre-trained_model/forests_sea_segmentation_R20m.keras')
 
-    visualize_patches(model=neural_network, images=input_test, labels=output_test, number=20)
+    area_of_interest = read_raster(AREA_OF_INTEREST_PATH)
+    compare_full_prediction(model=neural_network, image=area_of_interest)
+    compare_patches_predictions(model=neural_network, images=input_test, labels=output_test, number=50)
     plot_history(training_history)
 
 
