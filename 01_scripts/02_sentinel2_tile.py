@@ -177,7 +177,7 @@ def main():
         '../00_src/01_sentinel2/01_raw_data_processed/2017/T39TTG_20170728T073611/B04.jp2', # Red
         '../00_src/01_sentinel2/01_raw_data_processed/2017/T39TTG_20170728T073611/B05.jp2', # Red Edge 1
         '../00_src/01_sentinel2/01_raw_data_processed/2017/T39TTG_20170728T073611/B08.jp2', # NIR
-        '../00_src/01_sentinel2/01_raw_data_processed/2017/T39TTG_20170728T073611/B8A.jp2', # Red Edge 2
+        '../00_src/01_sentinel2/01_raw_data_processed/2017/T39TTG_20170728T073611/B8A.jp2', # Red Edge 4
         '../00_src/01_sentinel2/01_raw_data_processed/2017/T39TTG_20170728T073611/B11.jp2' # SWIR 1
     ]
     OUTPUT_PATH = '../00_src/01_sentinel2/02_tiles/R5m/2017/T39TTG_20170728T073611_all_same.tif'

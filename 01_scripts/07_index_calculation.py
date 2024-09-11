@@ -57,23 +57,23 @@ def detect_outliers(data):
 
 
 def index_channel(image, save_path):
-    THRESHOLD_LOW = 0.4
+    THRESHOLD_LOW = 0.0
     THRESHOLD_HIGH = 1.0
 
     blue_channel = image[0]
     green_channel = image[1]
     red_channel = image[2]
-    red_edge1_channel = image[3]
+    red_edge_1_channel = image[3]
     nir_channel = image[4]
-    red_edge2_channel = image[5]
+    red_edge_4_channel = image[5]
     swir1_channel = image[6]
 
-    background = red_edge1_channel
+    background = red_channel
 
-    ndvi_channel = (nir_channel - red_channel) / (nir_channel + red_channel + 1e-10)
-    forests_mask = np.where((ndvi_channel > THRESHOLD_LOW) & (ndvi_channel < THRESHOLD_HIGH), True, False)
+    mndwi_channel = (green_channel - swir1_channel) / (green_channel + swir1_channel + 1e-10)
+    sea_mask = np.where((mndwi_channel > THRESHOLD_LOW) & (mndwi_channel < THRESHOLD_HIGH), True, False)
 
-    gndvi_channel = (nir_channel - green_channel) / (nir_channel + green_channel + 1e-10)
+    ndci_channel = (red_edge_1_channel - red_channel) / (red_edge_1_channel + red_channel + 1e-10)
 
     # Calculate forest area
     #spatial_resolution = 20
@@ -82,7 +82,7 @@ def index_channel(image, save_path):
     #forest_area_m2 = forest_pixel_count * pixel_area_m2
     #forest_area_km2 = int(forest_area_m2 / 1e6)
 
-    area_map = np.where(forests_mask, gndvi_channel, np.nan)
+    area_map = np.where(sea_mask, ndci_channel, np.nan)
 
     figure = plt.figure(figsize=(15, 8))
     gs = gridspec.GridSpec(nrows=2, ncols=2)
@@ -91,16 +91,16 @@ def index_channel(image, save_path):
     # ================== COLOR MAP ==================
     area_color_map_ax = figure.add_subplot(gs[0:2, 0:1])
     area_color_map_ax.imshow(background, cmap='Grays')
-    color_map = area_color_map_ax.imshow(area_map, cmap='YlGn', vmin=-1, vmax=1) #
-    plt.colorbar(color_map, ax=area_color_map_ax, label=r'$GNDVI = \frac{NIR - Green}{NIR + Green}$',
+    color_map = area_color_map_ax.imshow(area_map, cmap='RdYlBu_r', vmin=-1, vmax=1) #
+    plt.colorbar(color_map, ax=area_color_map_ax, label=r'$NDCI\,=\,\frac{Red\,Edge\,1\,(B5)\,-\,Red\,(B4)}{Red\,Edge\,1\,(B5)\,+\,Red\,(B4)}$',
                  orientation='horizontal', shrink=.75)
-    area_color_map_ax.set_title('Green Normalized Difference Vegetation Index (GNDVI) color map')
+    area_color_map_ax.set_title('Normalized Difference Chlorophyll Index (NDCI)\ncolor map')
     area_color_map_ax.axis('off')
 
     # ================== HISTOGRAM ==================
     histogram_ax = figure.add_subplot(gs[0:1, 1:2])
 
-    index_area_pattern = gndvi_channel[forests_mask]
+    index_area_pattern = ndci_channel[sea_mask] #change
     index_area_data = index_area_pattern.ravel()
     index_area_filtered_data, index_area_anomalies = detect_outliers(index_area_data)
     index_data_mean = np.mean(index_area_filtered_data)
@@ -109,7 +109,7 @@ def index_channel(image, save_path):
 
     bins = np.histogram_bin_edges(index_area_data, bins='scott')
 
-    histogram_ax.set_title('Histogram and Boxplot of Forests Biomass')
+    histogram_ax.set_title('Histogram and Boxplot\nof Algal Bloom Content in the Sea')
     histogram_ax.set_ylabel('Frequency', fontsize=FONT_SIZE)
     histogram_ax.xaxis.set_major_formatter(MY_FORMATTER)
     histogram_ax.yaxis.set_major_formatter(MY_FORMATTER)
@@ -141,7 +141,7 @@ def index_channel(image, save_path):
         boxplot_ax.tick_params(top=True, right=False, bottom=True, left=False,
                                labeltop=False, labelright=False, labelbottom=True, labelleft=False,
                                axis='both', labelsize=FONT_SIZE)
-    boxplot_ax.set_xlabel('GNDVI value', fontsize=FONT_SIZE)
+    boxplot_ax.set_xlabel('NDCI value', fontsize=FONT_SIZE)
 
     #plt.show()
     plt.savefig(save_path, dpi=300)
@@ -150,7 +150,7 @@ def index_channel(image, save_path):
 
 def main():
     IMAGE_PATH = '../00_src/01_sentinel2/04_aoi/20240805T073619.tif'
-    OUTPUT_PATH = '../02_results/04_forests_indices/05_GNDVI/20240805T073619.png'
+    OUTPUT_PATH = '../02_results/05_sea_indices/01_NDCI/20240805T073619.png'
     image = read_tif(IMAGE_PATH)
     index_channel(image, OUTPUT_PATH)
 

@@ -357,7 +357,7 @@ def main() -> None:
     neural_network = multi_unet_model(patch_height=PATCH_SIZE, patch_width=PATCH_SIZE,
                                       num_input_channels=NUM_INPUT_CHANNELS, num_classes=total_classes)
     neural_network.compile(optimizer="adam", loss='categorical_crossentropy', metrics=["accuracy", jaccard_index])
-    callbacks = [EarlyStopping(monitor='val_jaccard_index', mode='max', patience=15, restore_best_weights=True, verbose=1)]
+    callbacks = [EarlyStopping(monitor='val_jaccard_index', mode='max', patience=20, restore_best_weights=True, verbose=1)]
     training_history = neural_network.fit(input_train, output_train, class_weight=class_weights, epochs=100,
                                           batch_size=32, verbose=1, callbacks=callbacks, validation_split=0.2,
                                           shuffle=True)

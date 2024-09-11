@@ -60,8 +60,7 @@ def increase_spatial_resolution(image: np.ndarray, model: torch.nn.Module, patch
 
     for flag in range(2, num_channels):
         if flag == 2:
-            rgb_indices = [2, 1, 0]
-            true_color_composite = multiple_image[rgb_indices, ...]
+            true_color_composite = multiple_image[:3, ...]
             print(f"Flag {flag} composite is ready")
         else:
             channel_index = flag
@@ -88,8 +87,7 @@ def increase_spatial_resolution(image: np.ndarray, model: torch.nn.Module, patch
                 scaled_end_y = scaled_start_y + patch_size * scale_factor
                 scaled_end_x = scaled_start_x + patch_size * scale_factor
                 if flag == 2:
-                    bgr_indices = [2, 1, 0]
-                    scaled_multiple_image[:3, scaled_start_y:scaled_end_y, scaled_start_x:scaled_end_x] = high_resolution_output[bgr_indices, ...]
+                    scaled_multiple_image[:3, scaled_start_y:scaled_end_y, scaled_start_x:scaled_end_x] = high_resolution_output
                 else:
                     channel_index = flag
                     scaled_multiple_image[channel_index, scaled_start_y:scaled_end_y, scaled_start_x:scaled_end_x] = high_resolution_output[0]
