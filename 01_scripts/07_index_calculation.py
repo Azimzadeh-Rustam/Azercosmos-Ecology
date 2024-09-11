@@ -73,7 +73,7 @@ def index_channel(image, save_path):
     mndwi_channel = (green_channel - swir1_channel) / (green_channel + swir1_channel + 1e-10)
     sea_mask = np.where((mndwi_channel > THRESHOLD_LOW) & (mndwi_channel < THRESHOLD_HIGH), True, False)
 
-    ndci_channel = (red_edge_1_channel - red_channel) / (red_edge_1_channel + red_channel + 1e-10)
+    turbidity_channel = red_channel / (green_channel + 1e-10)
 
     # Calculate forest area
     #spatial_resolution = 20
@@ -82,7 +82,7 @@ def index_channel(image, save_path):
     #forest_area_m2 = forest_pixel_count * pixel_area_m2
     #forest_area_km2 = int(forest_area_m2 / 1e6)
 
-    area_map = np.where(sea_mask, ndci_channel, np.nan)
+    area_map = np.where(sea_mask, turbidity_channel, np.nan)
 
     figure = plt.figure(figsize=(15, 8))
     gs = gridspec.GridSpec(nrows=2, ncols=2)
@@ -91,16 +91,16 @@ def index_channel(image, save_path):
     # ================== COLOR MAP ==================
     area_color_map_ax = figure.add_subplot(gs[0:2, 0:1])
     area_color_map_ax.imshow(background, cmap='Grays')
-    color_map = area_color_map_ax.imshow(area_map, cmap='RdYlBu_r', vmin=-1, vmax=1) #
-    plt.colorbar(color_map, ax=area_color_map_ax, label=r'$NDCI\,=\,\frac{Red\,Edge\,1\,(B5)\,-\,Red\,(B4)}{Red\,Edge\,1\,(B5)\,+\,Red\,(B4)}$',
+    color_map = area_color_map_ax.imshow(area_map, cmap='viridis', vmin=0, vmax=1.2) #
+    plt.colorbar(color_map, ax=area_color_map_ax, label=r'$TI\,=\,\frac{Red\,(B4)}{Green\,(B3)}$',
                  orientation='horizontal', shrink=.75)
-    area_color_map_ax.set_title('Normalized Difference Chlorophyll Index (NDCI)\ncolor map')
+    area_color_map_ax.set_title('Turbidity Index (TI)\ncolor map')
     area_color_map_ax.axis('off')
 
     # ================== HISTOGRAM ==================
     histogram_ax = figure.add_subplot(gs[0:1, 1:2])
 
-    index_area_pattern = ndci_channel[sea_mask] #change
+    index_area_pattern = turbidity_channel[sea_mask] #change
     index_area_data = index_area_pattern.ravel()
     index_area_filtered_data, index_area_anomalies = detect_outliers(index_area_data)
     index_data_mean = np.mean(index_area_filtered_data)
@@ -109,7 +109,7 @@ def index_channel(image, save_path):
 
     bins = np.histogram_bin_edges(index_area_data, bins='scott')
 
-    histogram_ax.set_title('Histogram and Boxplot\nof Algal Bloom Content in the Sea')
+    histogram_ax.set_title('Histogram and Boxplot\nof Water Turbidity in the Sea')
     histogram_ax.set_ylabel('Frequency', fontsize=FONT_SIZE)
     histogram_ax.xaxis.set_major_formatter(MY_FORMATTER)
     histogram_ax.yaxis.set_major_formatter(MY_FORMATTER)
@@ -141,7 +141,7 @@ def index_channel(image, save_path):
         boxplot_ax.tick_params(top=True, right=False, bottom=True, left=False,
                                labeltop=False, labelright=False, labelbottom=True, labelleft=False,
                                axis='both', labelsize=FONT_SIZE)
-    boxplot_ax.set_xlabel('NDCI value', fontsize=FONT_SIZE)
+    boxplot_ax.set_xlabel('TI value', fontsize=FONT_SIZE)
 
     #plt.show()
     plt.savefig(save_path, dpi=300)
@@ -150,7 +150,7 @@ def index_channel(image, save_path):
 
 def main():
     IMAGE_PATH = '../00_src/01_sentinel2/04_aoi/20240805T073619.tif'
-    OUTPUT_PATH = '../02_results/05_sea_indices/01_NDCI/20240805T073619.png'
+    OUTPUT_PATH = '../02_results/05_sea_indices/03_Turbidity_Index/20240805T073619.png'
     image = read_tif(IMAGE_PATH)
     index_channel(image, OUTPUT_PATH)
 

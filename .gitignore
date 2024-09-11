@@ -1,4 +1,6 @@
 00_src
+01_scripts/00_server_sentinel2_assemble_cpu.py
+01_scripts/10_linear_regression_2.py
 .venv
 .idea
 *.tif
