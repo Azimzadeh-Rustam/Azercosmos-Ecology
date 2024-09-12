@@ -1,7 +1,13 @@
-00_src
+.venv/
+.idea/
+
+00_src/00_documents/
+00_src/01_sentinel2/
+00_src/02_azersky/
+00_src/03_info/
+compare_hists/
+
 01_scripts/00_server_sentinel2_assemble_cpu.py
 01_scripts/10_linear_regression_2.py
-.venv
-.idea
+
 *.tif
-*.psd

@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 from matplotlib.ticker import ScalarFormatter
 import scienceplots
 
-CHANNELS = ['Blue', 'Green', 'Red', 'Red Edge 1', 'Near-Infrared', 'Red Edge 2', 'SWIR']
+CHANNELS = ['Blue', 'Green', 'Red', 'Red Edge 1', 'Near-Infrared', 'Red Edge 4', 'SWIR']
 NUM_CHANNELS = len(CHANNELS)
 FIGURE_NUM_COLUMNS = 3
 FIGURE_NUM_ROWS = 3
@@ -50,7 +50,7 @@ def visualise_rgb(image: np.ndarray) -> None:
     plt.axis('off')
 
     #plt.show()
-    plt.savefig(f'../02_results/01_sentinel2/01_R20m/20240805T073619_aoi.png', dpi=300)
+    plt.savefig(f'../02_results/01_sentinel2/R20m/20240805T073619_aoi.png', dpi=300)
     plt.close()
 
 
@@ -70,7 +70,7 @@ def visualize_channels(image):
             figure.colorbar(color_map, ax=axis)
 
     #plt.show()
-    plt.savefig(f'../02_results/01_sentinel2/01_R20m/20240805T073619_channels.png', dpi=300)
+    plt.savefig(f'../02_results/01_sentinel2/R20m/20240805T073619_channels.png', dpi=300)
     plt.close()
 
 
@@ -119,12 +119,12 @@ def channel_histograms(image):
                 axes[row, column].axis('off')
 
     #plt.show()
-    plt.savefig(f'../02_results/01_sentinel2/01_R20m/20240805T073619_histograms.png', dpi=300)
+    plt.savefig(f'../02_results/01_sentinel2/R20m/20240805T073619_histograms.png', dpi=300)
     plt.close()
 
 
 def main() -> None:
-    PATH = '../00_src/01_sentinel2/03_full_area/20240805T073619.tif'
+    PATH = '../00_src/01_sentinel2/04_aoi/20240805T073619.tif'
 
     image = read_raster(PATH)
     visualise_rgb(image)
