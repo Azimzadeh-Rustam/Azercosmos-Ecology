@@ -91,8 +91,8 @@ def plot_regression(X, y, model, independent, dependent, outliers, save_path):
     plt.text(0.05, 0.95, stats_text, transform=plt.gca().transAxes,
              fontsize=FONT_SIZE, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
-    plt.xlabel(independent, fontsize=FONT_SIZE)
-    plt.ylabel(dependent, fontsize=FONT_SIZE)
+    plt.xlabel(f'{independent} normalized value', fontsize=FONT_SIZE)
+    plt.ylabel(f'{dependent} normalized value', fontsize=FONT_SIZE)
     plt.tick_params(axis='both', labelsize=FONT_SIZE)
     plt.title(f'Linear Regression Between\n{dependent} and {independent}', fontsize=FONT_SIZE)
     plt.legend(loc='best', fontsize=FONT_SIZE, fancybox=False, edgecolor='black')

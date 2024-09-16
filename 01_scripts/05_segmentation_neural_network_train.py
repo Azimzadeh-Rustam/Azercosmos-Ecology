@@ -9,6 +9,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (Input, Conv2D, MaxPooling2D, Conv2DTranspose, concatenate, Dropout)
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras import backend as bk
+from tensorflow.keras.models import load_model
 import scienceplots
 
 FONT_SIZE = 14
@@ -250,7 +251,7 @@ def compare_full_prediction(model: Model, image: np.ndarray) -> None:
     axis3.set_title("NN Prediction")
     axis3.axis('off')
 
-    plt.savefig(f'../02_results/03_neural_networks/02_forests_sea_segmentation/02_performance_plots/full_prediction.png', dpi=300)
+    plt.savefig(f'../02_results/03_neural_networks/02_forests_sea_segmentation/02_performance_plots/full_prediction_azersky_2023.png', dpi=300)
     plt.close()
 
 

@@ -1,4 +1,4 @@
-import random
+import os
 import numpy as np
 import rasterio
 from keras.src.layers import Activation, UpSampling2D
@@ -34,9 +34,20 @@ def set_plot_style():
     })
 
 
-def read_tif(path):
+def read_raster(path):
     with rasterio.open(path) as raster:
         return raster.read()
+
+
+def get_all_tiff(folder_path: str) -> np.ndarray:
+    images = list()
+    for filename in os.listdir(folder_path):
+        if filename.endswith('.tif'):
+            file_path = os.path.join(folder_path, filename)
+            image = read_raster(file_path)
+            images.append(image)
+
+    return np.stack(images, axis=0)
 
 
 def pad_to_multiple(image, patch_size):
@@ -69,7 +80,7 @@ def split_into_patches(image, patch_size):
     return patches
 
 
-def multi_unet_model(patch_height, patch_width, num_input_channels, num_classes):
+def multi_unet_model(patch_height, patch_width, num_input_channels):
     inputs = Input((patch_height, patch_width, num_input_channels))
 
     # Encoder
@@ -94,29 +105,26 @@ def multi_unet_model(patch_height, patch_width, num_input_channels, num_classes)
     # Output layer
     outputs = Conv2D(3, (3, 3), activation='linear', padding='same')(x)
 
-    model = Model(inputs=inputs, outputs=outputs)
-    model.compile(optimizer=Adam(learning_rate=0.001), loss='mean_squared_error')
-
-    return model
+    return Model(inputs=inputs, outputs=outputs)
 
 
 def plot_history(history):
     figure, axes = plt.subplots(1, 2, figsize=(10, 3.5))
 
     axis1 = axes[0]
-    axis1.set_ylabel('Loss Function', fontsize=14)
-    axis1.set_xlabel('Number of Epochs', fontsize=14)
-    axis1.tick_params(axis='both', labelsize=10)
+    axis1.set_ylabel('Loss Function', fontsize=FONT_SIZE)
+    axis1.set_xlabel('Number of Epochs', fontsize=FONT_SIZE)
+    axis1.tick_params(axis='both', labelsize=FONT_SIZE)
     axis1.plot(history.history['loss'], label='Train Data')
     axis1.plot(history.history['val_loss'], label='Validation Data')
     axis1.legend(loc='best', fontsize=10, fancybox=False, edgecolor='black')
 
     axis2 = axes[1]
-    axis2.set_ylabel('Jaccard Index', fontsize=14)
-    axis2.set_xlabel('Number of Epochs', fontsize=14)
-    axis2.tick_params(axis='both', labelsize=10)
-    axis2.plot(history.history['jaccard_index'], label='Train IoU')
-    axis2.plot(history.history['val_jaccard_index'], label='Validation IoU')
+    axis2.set_ylabel('Accuracy', fontsize=FONT_SIZE)
+    axis2.set_xlabel('Number of Epochs', fontsize=FONT_SIZE)
+    axis2.tick_params(axis='both', labelsize=FONT_SIZE)
+    axis2.plot(history.history['accuracy'], label='Train IoU')
+    axis2.plot(history.history['val_accuracy'], label='Validation IoU')
     axis2.legend(loc='best', fontsize=10, fancybox=False, edgecolor='black')
 
     plt.show()
@@ -124,32 +132,40 @@ def plot_history(history):
 
 
 def main():
-    image = read_tif('../01_src/03_images/2017.TIF')
-    mask = read_tif('../01_src/mask.tif')
+    FILES_FOLDER_PATH = '../00_src/01_sentinel2/03_full_area'
 
-    multiple_image = pad_to_multiple(image, patch_size=PATCH_SIZE)
-    multiple_mask = pad_to_multiple(mask, patch_size=PATCH_SIZE)
+    images = get_all_tiff(FILES_FOLDER_PATH)
 
-    image_patches = split_into_patches(multiple_image, patch_size=PATCH_SIZE)
-    mask_patches = split_into_patches(multiple_mask, patch_size=PATCH_SIZE)
-    label_patches = [one_hot_encoding(mask_patch) for mask_patch in mask_patches]
+    all_image_patches = list()
+    all_label_patches = list()
+    for image in images:
+        multiple_image = pad_to_multiple(image, patch_size=PATCH_SIZE)
 
-    image_patches = np.array(image_patches)
-    mask_patches = np.array(mask_patches)
-    label_patches = np.array(label_patches)
+        b_g_r_nir_channels_order = [0, 1, 2, 4]
+        input_image = multiple_image[..., b_g_r_nir_channels_order]
+        input_image = np.nan_to_num(input_image, nan=-1)
 
-    total_classes = len(np.unique(label_patches))
+        rd1_rd4_swir_channels_order = [3, 5, 6]
+        label = multiple_image[..., rd1_rd4_swir_channels_order]
 
-    input_train, input_test, output_train, output_test = train_test_split(image_patches, label_patches,
+        image_patches = split_into_patches(input_image, patch_size=PATCH_SIZE)
+        label_patches = split_into_patches(label, patch_size=PATCH_SIZE)
+
+        all_image_patches.append(image_patches)
+        all_label_patches.append(label_patches)
+    all_image_patches = np.concatenate(all_image_patches, axis=0)
+    all_label_patches = np.concatenate(all_label_patches, axis=0)
+
+    input_train, input_test, output_train, output_test = train_test_split(all_image_patches, all_label_patches,
                                                                           test_size=0.3, random_state=42)
 
     neural_network = multi_unet_model(patch_height=PATCH_SIZE, patch_width=PATCH_SIZE,
-                                      num_input_channels=INPUT_CHANNELS, num_classes=total_classes)
-    neural_network.compile(optimizer="adam", loss='categorical_crossentropy', metrics=["accuracy", jaccard_index])
+                                      num_input_channels=INPUT_CHANNELS)
+    neural_network.compile(optimizer="adam", loss='mean_squared_error', metrics=["accuracy"])
     callbacks = [EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, verbose=1)]
     training_history = neural_network.fit(input_train, output_train, epochs=150, batch_size=16, verbose=1,
                                           callbacks=callbacks, validation_split=0.2, shuffle=True)
-    neural_network.save('../02_results/01_neural_networks/01_spectra_reconstruction/01_pre-trained_model/spectra_reconstruction.h5')
+    neural_network.save('../02_results/01_neural_networks/01_spectra_reconstruction/01_pre-trained_model/spectra_reconstruction_R20m.keras')
 
     plot_history(training_history)
 

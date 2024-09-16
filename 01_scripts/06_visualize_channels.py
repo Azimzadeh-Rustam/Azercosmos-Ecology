@@ -50,7 +50,7 @@ def visualise_rgb(image: np.ndarray) -> None:
     plt.axis('off')
 
     #plt.show()
-    plt.savefig(f'../02_results/01_sentinel2/R20m/20240805T073619_aoi.png', dpi=300)
+    plt.savefig(f'../02_results/02_azersky/R20m/202307150717126_aoi.png', dpi=300)
     plt.close()
 
 
@@ -124,12 +124,12 @@ def channel_histograms(image):
 
 
 def main() -> None:
-    PATH = '../00_src/01_sentinel2/04_aoi/20240805T073619.tif'
+    PATH = '../00_src/02_azersky/02_aoi/R20m/202307150717126.tif'
 
     image = read_raster(PATH)
     visualise_rgb(image)
-    visualize_channels(image)
-    channel_histograms(image)
+    #visualize_channels(image)
+    #channel_histograms(image)
 
 
 if __name__ == '__main__':

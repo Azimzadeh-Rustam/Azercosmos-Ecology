@@ -22,7 +22,7 @@ def merge_parts(path_1: str, path_2: str) -> rasterio.io.DatasetReader:
     with MemoryFile() as memory_raster:
         with memory_raster.open(**out_meta) as memory_dataset:
             memory_dataset.write(mosaic)
-            memory_dataset.close() # new
+            memory_dataset.close()
         return memory_raster.open()
 
 
