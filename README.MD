@@ -59,4 +59,24 @@ The project leverages non-invasive remote sensing technologies and AI-driven too
         └── (correlation analysis results)
 
 
+## Scripts and Usage
 
+This repository includes various scripts used for data preprocessing, analysis, and visualization:
+
+1. **Data Merging and Cleaning**
+   - `merge_tiles.py`: Merges satellite image tiles and cleans the data for further processing.
+   - `data_normalization.py`: Normalizes spectral data ranges for consistency across different datasets.
+
+2. **Index Calculation**
+   - `calculate_indices.py`: Computes various environmental indices such as NDVI, MNDWI, GCI, and others, crucial for assessing vegetation health and water quality.
+
+3. **Machine Learning Models**
+   - `segmentation_model.py`: Contains the code for the convolutional neural network used for image segmentation to differentiate between forested areas and water bodies.
+   - `spectral_reconstruction_model.py`: A neural network model designed to predict missing spectral channels from available data.
+
+4. **Statistical Analysis**
+   - `correlation_analysis.py`: Performs statistical correlation analysis between different environmental indices.
+   - `regression_analysis.py`: Applies regression models to predict trends and impacts.
+
+5. **Visualization**
+   - `visualize_data.py`: Scripts to generate graphs and maps for visual representation of data analysis results.

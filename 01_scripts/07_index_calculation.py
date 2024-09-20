@@ -3,9 +3,12 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import gridspec as gridspec
 from matplotlib.ticker import ScalarFormatter
+from tensorflow.keras.models import load_model
+from tensorflow.keras.models import Model
 import scienceplots
 
 FONT_SIZE = 14
+PATCH_SIZE = 256
 MY_FORMATTER = ScalarFormatter(useMathText=True)
 MY_FORMATTER.set_scientific(True)
 MY_FORMATTER.set_powerlimits((-2, 2))
@@ -56,7 +59,45 @@ def detect_outliers(data):
     return filtered_data, anomalies
 
 
+def pad_to_multiple(image: np.ndarray, patch_size: int) -> np.ndarray:
+    height, width = image.shape[0], image.shape[1]
+
+    pad_height = (patch_size - height % patch_size) % patch_size
+    pad_width = (patch_size - width % patch_size) % patch_size
+
+    paddings = [(0, pad_height), (0, pad_width), (0, 0)]
+
+    return np.pad(image, paddings, mode='constant', constant_values=np.nan)
+
+
+def full_predict(model: Model, image: np.ndarray) -> np.ndarray:
+    initial_height, initial_width, _ = image.shape
+
+    multiple_image = pad_to_multiple(image=image, patch_size=PATCH_SIZE)
+    multiple_height, multiple_width, _ = multiple_image.shape
+
+    input_image = multiple_image[..., :3]
+    input_image = np.nan_to_num(input_image, nan=-1)
+
+    prediction = np.zeros((multiple_height, multiple_width), dtype=np.uint8)
+
+    for start_y in range(0, multiple_height, PATCH_SIZE):
+        for start_x in range(0, multiple_width, PATCH_SIZE):
+            end_y = start_y + PATCH_SIZE
+            end_x = start_x + PATCH_SIZE
+
+            input_patch = input_image[start_y:end_y, start_x:end_x, :]
+            predicted_patch_label = model.predict(np.expand_dims(input_patch, axis=0))
+            predicted_patch = np.argmax(predicted_patch_label.squeeze(), axis=-1)
+
+            prediction[start_y:end_y, start_x:end_x] = predicted_patch
+
+    return prediction[:initial_height, :initial_width]
+
+
 def index_channel(image, save_path):
+    NEURAL_NETWORK_PATH = '../02_results/03_neural_networks/01_forests_sea_segmentation/01_pre-trained_model/forests_sea_segmentation_R20m.keras'
+
     THRESHOLD_LOW = 0.0
     THRESHOLD_HIGH = 1.0
 
@@ -70,8 +111,18 @@ def index_channel(image, save_path):
 
     background = red_channel
 
-    mndwi_channel = (green_channel - swir1_channel) / (green_channel + swir1_channel + 1e-10)
-    sea_mask = np.where((mndwi_channel > THRESHOLD_LOW) & (mndwi_channel < THRESHOLD_HIGH), True, False)
+    # Defining a specific area using an index
+    #mndwi_channel = (green_channel - swir1_channel) / (green_channel + swir1_channel + 1e-10)
+    #sea_mask = np.where((mndwi_channel > THRESHOLD_LOW) & (mndwi_channel < THRESHOLD_HIGH), True, False)
+
+    # Defining a specific area using a neural network
+    neural_network = load_model(NEURAL_NETWORK_PATH)
+    image = image.transpose((1, 2, 0))
+    rgb_indices = [2, 1, 0]
+    true_color_composite = image[..., rgb_indices]
+    prediction = full_predict(model=neural_network, image=true_color_composite)
+    forests_mask = np.where(prediction == 1, True, False)
+    sea_mask = np.where(prediction == 2, True, False)
 
     ndci_channel = (red_edge_1_channel - red_channel) / (red_edge_1_channel + red_channel + 1e-10)
 

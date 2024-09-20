@@ -11,3 +11,4 @@ compare_hists/
 01_scripts/10_linear_regression_2.py
 
 *.tif
+*.psd
