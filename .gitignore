@@ -5,6 +5,9 @@
 00_src/01_sentinel2/
 00_src/02_azersky/
 00_src/03_info/
+00_src/202307150717126_aoi.png
+00_src/accent_NDCI_20240805T073619_Sentinel2.psd
+00_src/time_series.psd
 compare_hists/
 
 01_scripts/00_server_sentinel2_assemble_cpu.py

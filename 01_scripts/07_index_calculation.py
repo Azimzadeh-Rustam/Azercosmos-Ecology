@@ -112,17 +112,17 @@ def index_channel(image, save_path):
     background = red_channel
 
     # Defining a specific area using an index
-    #mndwi_channel = (green_channel - swir1_channel) / (green_channel + swir1_channel + 1e-10)
-    #sea_mask = np.where((mndwi_channel > THRESHOLD_LOW) & (mndwi_channel < THRESHOLD_HIGH), True, False)
+    mndwi_channel = (green_channel - swir1_channel) / (green_channel + swir1_channel + 1e-10)
+    sea_mask = np.where((mndwi_channel > THRESHOLD_LOW) & (mndwi_channel < THRESHOLD_HIGH), True, False)
 
     # Defining a specific area using a neural network
-    neural_network = load_model(NEURAL_NETWORK_PATH)
-    image = image.transpose((1, 2, 0))
-    rgb_indices = [2, 1, 0]
-    true_color_composite = image[..., rgb_indices]
-    prediction = full_predict(model=neural_network, image=true_color_composite)
-    forests_mask = np.where(prediction == 1, True, False)
-    sea_mask = np.where(prediction == 2, True, False)
+    #neural_network = load_model(NEURAL_NETWORK_PATH)
+    #image = image.transpose((1, 2, 0))
+    #rgb_indices = [2, 1, 0]
+    #true_color_composite = image[..., rgb_indices]
+    #prediction = full_predict(model=neural_network, image=true_color_composite)
+    #forests_mask = np.where(prediction == 1, True, False)
+    #sea_mask = np.where(prediction == 2, True, False)
 
     ndci_channel = (red_edge_1_channel - red_channel) / (red_edge_1_channel + red_channel + 1e-10)
 
